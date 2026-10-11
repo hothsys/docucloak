@@ -1,0 +1,9 @@
+# Pinned for reproducible installs; Dependabot (.github/dependabot.yml) opens PRs to bump these.
+# app.py auto-installs missing packages using its own minimum versions.
+
+# Required
+PyMuPDF==1.28.2
+Pillow==12.2.0
+
+# Image OCR redaction (also needs the Tesseract binary: brew install tesseract)
+pytesseract==0.3.13
