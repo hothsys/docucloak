@@ -3,7 +3,7 @@
 
 # Required
 PyMuPDF==1.28.2
-Pillow==12.2.0
+Pillow==12.3.0
 
 # Image OCR redaction (also needs the Tesseract binary: brew install tesseract)
 pytesseract==0.3.13
