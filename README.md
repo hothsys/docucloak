@@ -2,6 +2,8 @@
 
 A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
 
+<img width="1950" height="1626" alt="image" src="https://github.com/user-attachments/assets/65293b53-28f3-4254-bbd3-3901cfb0ec48" />
+
 ## Features
 
 - Recursively scans the input directory for `.pdf`, `.jpg`/`.jpeg`, `.png`, `.tif`/`.tiff` and `.bmp` files
