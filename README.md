@@ -15,7 +15,7 @@ A web app that runs on your Mac and redacts PDFs and images. Point it at an inpu
 - Terms come from a text field, a terms file, or both. The terms file is re-read from disk on every run, so you can edit it and run again
 - Copies are written as `<name>_redacted.<ext>` in the output directory, in the same subfolders as in the input directory (so same-named files in different folders never collide). The output directory is created if it doesn't exist
 - Files with no matches are skipped: no copy is written. If a file no longer matches after you change the terms, its old `_redacted` copy is deleted, so the output directory always reflects the latest terms
-- Live progress: what was found (PDFs, scanned PDFs, images), how many files are done, a progress bar, and each file's result in plain language. Cancel stops the current job
+- Live progress: what was found (PDFs, scanned PDFs, images), how many files are done, elapsed time and an estimate of the time left, a progress bar, and each file's result in plain language. Cancel stops the current job
 - Show files: click a file in the results to see it in Finder (File Explorer on Windows): the redacted copy, or the original if nothing was saved. **Show output folder** opens the output directory
 - Password-protected PDFs, unreadable files and files that crash the PDF library are reported as errors without stopping the rest of the job
 - Remembers the directories and terms file location between visits; the terms themselves are never saved
@@ -31,6 +31,8 @@ DocuCloak uses every CPU core. Each job runs in three steps:
 3. **Schedule.** Tasks run in worker processes, one per core, largest first, so the job never ends with one big file running alone. One worker serves the smallest files first, so results start appearing within a second.
 
 On a 12-core Mac, a mixed folder of 48 files (30 text PDFs, 7 scanned or partly scanned PDFs, 10 photos and a password-protected PDF; 566 PDF pages) takes about 11 seconds, compared with about 60 seconds before. OCR is most of the work: a scanned page or photo takes about a second, a text page a few hundredths of a second.
+
+The time-left estimate replays the remaining work on the available workers, calibrated as tasks finish to how fast this machine actually is. On the folders above it was typically within a second of the real time left; the first estimate appears within a second or two of starting.
 
 Worker processes stop 2 minutes after the last job to give their memory back, and start again with the next job. To use fewer cores, set `WORKERS` in `app.conf`.
 
@@ -91,7 +93,10 @@ Check redacted output before sharing it.
 
 ```
 app.py              server and redaction engine
-index.html          browser UI
+index.html          browser UI (markup only)
+css/styles.css      styles
+js/                 browser code: core.js (shared helpers), tesseract.js, browser.js (file browser),
+                    redact.js (start, progress, results), main.js (start-up)
 logo.svg            app logo
 app.conf            app name, title, port and (optional) number of workers
 server.sh           start / stop / restart / status / logs

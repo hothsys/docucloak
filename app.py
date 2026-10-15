@@ -6,6 +6,7 @@ Multithreaded file processing with black-fill redaction.
 """
 
 import os
+import re
 import sys
 import json
 import threading
@@ -131,6 +132,7 @@ job_state = {
     'pages_total': 0,
     'survey': None,
     'cancelled': False,
+    'elapsed': None,
     'results': [],
     'errors': [],
 }
@@ -146,7 +148,7 @@ def _start_job():
         cancel = threading.Event()
         cancel.job_id = next(_job_ids)
         job_state.update(cancel=cancel, running=True, phase='surveying', done=0, total=0,
-                         pages_done=0, pages_total=0, survey=None, cancelled=False, results=[], errors=[])
+                         pages_done=0, pages_total=0, survey=None, cancelled=False, elapsed=None, results=[], errors=[])
     _set_active_job(cancel.job_id)
     logger.debug('New redaction job started')
     return cancel
@@ -509,11 +511,14 @@ EXPRESS_MAX_COST = 0.5    # whole-file tasks cheaper than this (seconds) may use
 USE_PROCESSES = True      # tests use threads instead so monkeypatched functions apply
 WORKER_IDLE_SECONDS = 120  # stop workers this long after the last job, to give their memory back
 TASKS_PER_WORKER = 100     # then a worker process is replaced, so library leaks cannot build up
-# Measured cost estimates in seconds. Only their relative size matters: they
-# decide what to split and what to start first.
+# Cost estimates in seconds, measured with all cores busy (OCR runs about 40%
+# slower under full load than alone). They decide what to split and start first,
+# and seed the time-remaining estimate until real task times calibrate it.
 COST_TEXT_PAGE_PER_TERM = 0.0022
-COST_OCR_PAGE = 1.0
-COST_IMAGE_PER_MEGAPIXEL = 0.17
+COST_OCR_PAGE = 1.4
+COST_IMAGE_PER_MEGAPIXEL = 0.2
+COST_FINALIZE_PER_PAGE = 0.01       # applying redactions and saving a split PDF...
+COST_FINALIZE_PER_SCAN_PAGE = 0.05  # ...more where scanned page images are rewritten
 
 _shared_job_id = None  # multiprocessing.Value: id of the job workers should be running
 _pool = None
@@ -705,9 +710,133 @@ def _summarize_survey(surveys):
         'scan_pages': sum(len(sv['scan_pages']) for sv in surveys),
     }
 
+class _Progress:
+    """Elapsed time and an estimate of the time remaining for one job.
+
+    The estimate is the finish time of a simulated run of the remaining work:
+    - every task has a cost estimate from the survey (text pages, OCR pages,
+      images, the final save of a split PDF);
+    - estimates are calibrated per kind of work from tasks that already
+      finished, which learns this machine's real speed;
+    - running tasks count with the time they have already spent;
+    - the remaining tasks are replayed on the real number of workers, largest
+      first like the scheduler, each split PDF's final save after its parts, so
+      cores going idle near the end are accounted for.
+    """
+
+    PRIOR_SECONDS = 2.0  # pseudo-evidence that the uncalibrated estimates are right
+
+    def __init__(self, workers):
+        self.lock = threading.Lock()
+        self.workers = workers
+        self.started = time.monotonic()
+        self.finished = None
+        self.pending = {}   # task id -> (kind, cost, file)
+        self.running = {}   # task id -> (kind, cost, file, started)
+        self.done = {}      # kind -> [estimated total, actual total]
+        self.completed = 0
+
+    def elapsed(self):
+        return (self.finished or time.monotonic()) - self.started
+
+    def add(self, task_id, kind, cost, file):
+        with self.lock:
+            self.pending[task_id] = (kind, cost, file)
+
+    def start(self, task_id):
+        with self.lock:
+            kind, cost, file = self.pending.pop(task_id, ('text', 0.0, None))
+            self.running[task_id] = (kind, cost, file, time.monotonic())
+
+    def finish(self, task_id, ok=True):
+        with self.lock:
+            entry = self.running.pop(task_id, None)
+            if entry and ok:
+                kind, cost, _, started = entry
+                totals = self.done.setdefault(kind, [0.0, 0.0])
+                totals[0] += cost
+                totals[1] += time.monotonic() - started
+                self.completed += 1
+
+    def retry(self, task_id):
+        with self.lock:
+            entry = self.running.pop(task_id, None)
+            if entry:
+                self.pending[task_id] = entry[:3]
+
+    def drop_file(self, file):
+        with self.lock:
+            for table in (self.pending, self.running):
+                for task_id in [k for k, v in table.items() if v[2] == file]:
+                    del table[task_id]
+
+    def end(self):
+        with self.lock:
+            self.finished = time.monotonic()
+            self.pending.clear()
+            self.running.clear()
+
+    def _factor(self, kind):
+        est_all = sum(e for e, _ in self.done.values())
+        act_all = sum(a for _, a in self.done.values())
+        overall = (act_all + self.PRIOR_SECONDS) / (est_all + self.PRIOR_SECONDS)
+        est, act = self.done.get(kind, (0.0, 0.0))
+        return (act + self.PRIOR_SECONDS * overall) / (est + self.PRIOR_SECONDS)
+
+    def remaining(self):
+        """Seconds left, or None while there isn't enough evidence yet."""
+        with self.lock:
+            if self.finished is not None or (not self.pending and not self.running):
+                return 0.0
+            total_tasks = self.completed + len(self.pending) + len(self.running)
+            if self.completed < min(2, total_tasks):
+                return None
+            now = time.monotonic()
+            # Running tasks: when their worker becomes free (time already spent counts)
+            free_at, part_end, makespan = [], {}, 0.0
+            for kind, cost, file, started in self.running.values():
+                expected = cost * self._factor(kind)
+                end = max(expected - (now - started), 0.1 * expected)
+                free_at.append(end)
+                makespan = max(makespan, end)
+                if kind != 'finalize':
+                    part_end[file] = max(part_end.get(file, 0.0), end)
+            free_at += [0.0] * max(0, self.workers - len(free_at))
+            heapq.heapify(free_at)
+            # Pending work, as the scheduler takes it: a split PDF's final save as soon
+            # as its parts are done, otherwise the largest task first
+            pending = sorted(self.pending.values(), key=lambda t: -t[1])
+            finals = {file: cost * self._factor(kind) for kind, cost, file in pending if kind == 'finalize'}
+            normals = [t for t in pending if t[0] != 'finalize']
+            parts_left = {file: 0 for file in finals}
+            for _, _, file in normals:
+                if file in parts_left:
+                    parts_left[file] += 1
+            ready = [(part_end.get(f, 0.0), f) for f, n in parts_left.items() if n == 0]
+            heapq.heapify(ready)
+            next_normal = 0
+            while next_normal < len(normals) or ready:
+                t = heapq.heappop(free_at)
+                if ready and (ready[0][0] <= t or next_normal >= len(normals)):
+                    ready_at, file = heapq.heappop(ready)
+                    end = max(t, ready_at) + finals[file]
+                else:
+                    kind, cost, file = normals[next_normal]
+                    next_normal += 1
+                    end = t + cost * self._factor(kind)
+                    if file in parts_left:
+                        parts_left[file] -= 1
+                        part_end[file] = max(part_end.get(file, 0.0), end)
+                        if parts_left[file] == 0:
+                            heapq.heappush(ready, (part_end[file], file))
+                heapq.heappush(free_at, end)
+                makespan = max(makespan, end)
+            return makespan
+
 def _run_job(job_id, cancel, files, output_for, terms):
     """Survey, plan and run one redaction job. Runs on the 'redaction-job' thread."""
     started = time.time()
+    progress = cancel.progress = _Progress(WORKERS)
     _set_active_job(job_id)
 
     def record(info):
@@ -759,9 +888,19 @@ def _run_job(job_id, cancel, files, output_for, terms):
                 continue
             plan = _plan_tasks(sv, len(terms))
             state[fp] = {'pending': sum(1 for t in plan if t[0] == 'analyze'), 'rects': {}, 'matches': 0,
-                         'ocr_pages': 0, 'failed': False, 'pages': sv['pages'] if sv['kind'] != 'image' else 1}
+                         'ocr_pages': 0, 'failed': False, 'pages': sv['pages'] if sv['kind'] != 'image' else 1,
+                         'finalize_id': ('finalize', fp)}
+            if state[fp]['pending']:  # split: its final save is still to come
+                progress.add(('finalize', fp), 'finalize', sv['pages'] * COST_FINALIZE_PER_PAGE +
+                             len(sv['scan_pages']) * COST_FINALIZE_PER_SCAN_PAGE, fp)
+            scan = set(sv['scan_pages'])
             for kind, pages, cost in plan:
-                task = {'kind': kind, 'path': fp, 'pages': pages, 'tries': 0}
+                task = {'kind': kind, 'path': fp, 'pages': pages, 'tries': 0, 'id': next(seq)}
+                if sv['kind'] == 'image':
+                    work = 'image'
+                else:
+                    work = 'ocr' if any(p in scan for p in pages) else 'text'
+                progress.add(task['id'], work, cost, fp)
                 if kind == 'file' and cost < EXPRESS_MAX_COST:
                     heapq.heappush(express, (cost, next(seq), task))
                 else:
@@ -771,6 +910,7 @@ def _run_job(job_id, cancel, files, output_for, terms):
             st = state[fp]
             if not st['failed']:
                 st['failed'] = True
+                progress.drop_file(fp)
                 record(_file_info(fp, output_for(fp), None, err, False))
 
         def submit(pool, task):
@@ -808,6 +948,7 @@ def _run_job(job_id, cancel, files, output_for, terms):
                     continue
                 if task['kind'] != 'finalize' and task['tries'] == 0:
                     logger.debug('Starting %s task for %s (%d page(s))', task['kind'], task['path'].name, len(task['pages']))
+                progress.start(task['id'])
                 inflight[submit(pool, task)] = task
             if not inflight:
                 continue
@@ -818,6 +959,9 @@ def _run_job(job_id, cancel, files, output_for, terms):
                     break  # don't record outcomes of a cancelled job
                 task = inflight.pop(fut)
                 fp, st = task['path'], state[task['path']]
+                exc = fut.exception()
+                if not isinstance(exc, BrokenProcessPool):  # crashed tasks are retried below
+                    progress.finish(task['id'], ok=exc is None)
                 try:
                     out = fut.result()
                 except BrokenProcessPool:
@@ -840,7 +984,8 @@ def _run_job(job_id, cancel, files, output_for, terms):
                     st['pending'] -= 1
                     add_pages(len(task['pages']))
                     if st['pending'] == 0:
-                        heapq.heappush(queue, (0, 0, next(seq), {'kind': 'finalize', 'path': fp, 'pages': [], 'tries': 0}))
+                        heapq.heappush(queue, (0, 0, next(seq), {'kind': 'finalize', 'path': fp, 'pages': [], 'tries': 0,
+                                                                 'id': st['finalize_id']}))
                 else:
                     if task['kind'] == 'file':
                         add_pages(st['pages'])
@@ -860,6 +1005,7 @@ def _run_job(job_id, cancel, files, output_for, terms):
                         fail(task['path'], MSG_CRASHED)
                     else:
                         task.pop('express', None)
+                        progress.retry(task['id'])
                         heapq.heappush(queue, (0 if task['kind'] == 'finalize' else 1, 0, next(seq), task))
         if cancel.is_set():
             for fut in inflight:
@@ -874,6 +1020,10 @@ def _run_job(job_id, cancel, files, output_for, terms):
         logger.info('Redaction job finished in %.1fs: %d redacted, %d skipped (no matches), %d failed%s',
                     time.time() - started, redacted, skipped, failed,
                     ' (cancelled)' if cancel.is_set() else '')
+        progress.end()
+        with _job_lock:
+            if job_state['cancel'] is cancel:
+                job_state['elapsed'] = round(progress.elapsed(), 1)
         _finish_job(cancel)
         _schedule_idle_shutdown()
 
@@ -919,6 +1069,7 @@ class Handler(SimpleHTTPRequestHandler):
                     'pages_total': job_state['pages_total'],
                     'survey': job_state['survey'],
                     'cancelled': job_state['cancelled'],
+                    **_timing(job_state),
                     'results': job_state['results'],
                     'errors': job_state['errors'],
                 })
@@ -938,8 +1089,13 @@ class Handler(SimpleHTTPRequestHandler):
             with open(os.path.join(APP_DIR, 'index.html'), 'r') as f:
                 content = (f.read()
                            .replace('{{HOME_DIR}}', os.path.expanduser('~'))
-                           .replace('{{LOGO_VERSION}}', logo_version))
+                           .replace('{{LOGO_VERSION}}', logo_version)
+                           .replace('{{ASSET_VERSION}}', _asset_version()))
             self.wfile.write(content.encode())
+            return
+        asset = _STATIC_PATH.match(path)
+        if asset:
+            self._send_static(asset.group(1), asset.group(2))
             return
         if path == '/logo.svg':
             with open(os.path.join(APP_DIR, 'logo.svg'), 'rb') as f:
@@ -1076,6 +1232,23 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def _send_static(self, folder, name):
+        """Serve a file from css/ or js/ (nothing else in the app folder is served)."""
+        file_path = os.path.join(APP_DIR, folder, name)
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+        except OSError:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', _STATIC_TYPES[folder])
+        # Revalidate every load so an updated file is picked up immediately
+        self.send_header('Cache-Control', 'no-cache')
+        self.end_headers()
+        self.wfile.write(content)
+
     def _reveal(self, target):
         """Show a file (selected) or folder in Finder, or the platform's file manager."""
         target = str(target or '')
@@ -1181,6 +1354,33 @@ def _list_dir(path, start='', want_file=False, field=''):
         'truncated': truncated,
         'places': places,
     }, 200
+
+# Static assets: only /css/<name>.css and /js/<name>.js, no subfolders or other files,
+# so the rest of the app folder (app.py, server.log, ...) is never served
+_STATIC_PATH = re.compile(r'^/(css|js)/([A-Za-z0-9_-]+\.(?:css|js))$')
+_STATIC_TYPES = {'css': 'text/css; charset=utf-8', 'js': 'text/javascript; charset=utf-8'}
+
+def _asset_version():
+    """Newest modification time of css/ and js/, added to their URLs in index.html so
+    browsers (Safari included) fetch updated files instead of cached ones."""
+    newest = 0
+    for folder in ('css', 'js'):
+        try:
+            with os.scandir(os.path.join(APP_DIR, folder)) as entries:
+                newest = max([newest] + [int(e.stat().st_mtime) for e in entries if e.is_file()])
+        except OSError:
+            pass
+    return str(newest)
+
+def _timing(state):
+    """Elapsed seconds and estimated seconds left for /status (call with _job_lock held)."""
+    cancel = state['cancel']
+    progress = getattr(cancel, 'progress', None)
+    if state['running'] and progress is not None:
+        remaining = progress.remaining() if state['phase'] == 'redacting' else None
+        return {'elapsed': round(progress.elapsed(), 1),
+                'remaining': None if remaining is None else round(remaining, 1)}
+    return {'elapsed': state['elapsed'], 'remaining': None}
 
 def _browse_start_dir(current, want_file=False):
     """Folder the file browser opens in: the field's current location if it

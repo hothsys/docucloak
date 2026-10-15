@@ -11,7 +11,8 @@ def test_start_job_resets_state_and_returns_fresh_event():
     assert isinstance(cancel, threading.Event) and not cancel.is_set()
     assert app.job_state == {
         'running': True, 'cancel': cancel, 'phase': 'surveying', 'done': 0, 'total': 0,
-        'pages_done': 0, 'pages_total': 0, 'survey': None, 'cancelled': False, 'results': [], 'errors': [],
+        'pages_done': 0, 'pages_total': 0, 'survey': None, 'cancelled': False, 'elapsed': None,
+        'results': [], 'errors': [],
     }
 
 

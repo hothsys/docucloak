@@ -63,7 +63,8 @@ def test_status_idle(server):
     status, _, body = server.get('/status')
     assert status == 200
     assert json.loads(body) == {'running': False, 'phase': 'idle', 'done': 0, 'total': 0, 'pages_done': 0,
-                                'pages_total': 0, 'survey': None, 'cancelled': False, 'results': [], 'errors': []}
+                                'pages_total': 0, 'survey': None, 'cancelled': False, 'elapsed': None,
+                                'remaining': None, 'results': [], 'errors': []}
 
 
 def test_unknown_get_returns_404(server):
@@ -589,3 +590,49 @@ def test_fingerprint_is_content_based(tmp_path, monkeypatch):
     first = app._code_fingerprint()
     fake.write_text('two')
     assert app._code_fingerprint() != first
+
+
+# ─── Static assets: css/ and js/ ───────────────────────────────────────────────
+
+@pytest.mark.parametrize('path, content_type', [
+    ('/css/styles.css', 'text/css; charset=utf-8'),
+    ('/js/core.js', 'text/javascript; charset=utf-8'),
+    ('/js/main.js', 'text/javascript; charset=utf-8'),
+])
+def test_static_files_served_with_type_and_no_cache(server, isolated_app, path, content_type):
+    status, headers, body = server.get(path)
+    assert status == 200
+    assert headers['Content-Type'] == content_type
+    assert headers['Cache-Control'] == 'no-cache'
+    assert body == (isolated_app / path.lstrip('/')).read_bytes()
+
+
+@pytest.mark.parametrize('path', [
+    '/app.py', '/server.log', '/server.sh', '/app.conf', '/.server.pid',
+    '/js/../app.py', '/css/..%2Fapp.py', '/js/%2e%2e/app.py',
+    '/js/core.py', '/css/styles.js', '/js/sub/core.js', '/js/', '/css/missing.css',
+])
+def test_nothing_else_in_the_app_folder_is_served(server, isolated_app, path):
+    (isolated_app / 'server.log').write_text('secret log')
+    (isolated_app / 'app.py').write_text('source')
+    status, _, body = server.get(path)
+    assert status == 404 and b'secret' not in body and b'source' not in body
+
+
+def test_index_links_versioned_css_and_js(server, isolated_app):
+    import re
+    html = server.get('/')[2].decode()
+    assert '{{ASSET_VERSION}}' not in html
+    version = re.search(r'/css/styles\.css\?v=(\d+)"', html).group(1)
+    scripts = re.findall(r'<script src="/js/(\w+)\.js\?v=(\d+)"></script>', html)
+    assert [name for name, _ in scripts] == ['core', 'tesseract', 'browser', 'redact', 'main'], 'load order matters'
+    assert {v for _, v in scripts} == {version}
+    os.utime(isolated_app / 'js' / 'redact.js', (2_000_000_000, 2_000_000_000))  # an update to one file
+    assert '?v=2000000000' in server.get('/')[2].decode(), 'version changes so browsers refetch'
+
+
+def test_index_has_no_inline_script_or_style():
+    from conftest import REPO_DIR
+    html = (REPO_DIR / 'index.html').read_text()
+    assert '<style' not in html and 'style>' not in html and 'style="' not in html, 'styling lives in css/'
+    assert '<script>' not in html, 'JavaScript lives in js/'
