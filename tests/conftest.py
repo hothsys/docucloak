@@ -76,13 +76,15 @@ def wait_for_job(timeout=20.0):
 def isolated_app(tmp_path, monkeypatch):
     """Point APP_DIR at a scratch dir and reset global job state per test.
 
-    The scratch APP_DIR gets copies of index.html and logo.svg but no redact_terms.txt, so the
+    The scratch APP_DIR gets copies of index.html, logo.svg, css/ and js/ but no redact_terms.txt, so the
     developer's real terms file never leaks into a test.
     """
     app_dir = tmp_path / 'appdir'
     app_dir.mkdir()
     shutil.copy(REPO_DIR / 'index.html', app_dir / 'index.html')
     shutil.copy(REPO_DIR / 'logo.svg', app_dir / 'logo.svg')
+    shutil.copytree(REPO_DIR / 'css', app_dir / 'css')
+    shutil.copytree(REPO_DIR / 'js', app_dir / 'js')
     monkeypatch.setattr(app, 'APP_DIR', str(app_dir))
     # Run the scheduler on threads so tests can monkeypatch the redaction
     # functions; tests/test_scheduler.py covers the real worker processes.
@@ -92,7 +94,7 @@ def isolated_app(tmp_path, monkeypatch):
     monkeypatch.setattr(app, '_find_tesseract', lambda: real_find() or '/usr/bin/false')
     with app._job_lock:
         app.job_state.update(running=False, cancel=None, phase='idle', done=0, total=0, pages_done=0,
-                             pages_total=0, survey=None, results=[], errors=[])
+                             pages_total=0, survey=None, cancelled=False, elapsed=None, results=[], errors=[])
     yield app_dir
     app._cancel_job()
 

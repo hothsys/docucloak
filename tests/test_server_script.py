@@ -24,6 +24,8 @@ def copy(tmp_path):
     app_dir.mkdir()
     for name in ('app.py', 'index.html', 'logo.svg', 'server.sh', 'app.conf'):
         shutil.copy2(REPO_DIR / name, app_dir / name)
+    for folder in ('css', 'js'):
+        shutil.copytree(REPO_DIR / folder, app_dir / folder)
     conf = (app_dir / 'app.conf').read_text().replace('PORT=5903', f'PORT={free_port()}')
     (app_dir / 'app.conf').write_text(conf)
     bin_dir = tmp_path / 'bin'

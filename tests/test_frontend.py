@@ -313,7 +313,7 @@ def test_redact_with_textarea_terms(page, tmp_path, sample_pdf):
     fill_dirs(page, tmp_path)
     page.fill('#terms', 'Alice Smith')
     status = start_and_wait(page)
-    assert status == 'Done. 1 file redacted.'
+    assert status == 'Done in under 1 sec. 1 file redacted.'
     assert 'Alice' not in pdf_text(tmp_path / 'out' / 'sample_redacted.pdf')
     item = page.locator('.result-item')
     assert item.count() == 1
@@ -410,7 +410,7 @@ def test_rerun_after_editing_terms_file_uses_edited_terms(page, tmp_path, sample
     assert 'Alice' not in text and 'John Doe' in text
 
     terms.write_text('Alice Smith\nJohn Doe\nPhone\n')  # user adds more terms
-    assert start_and_wait(page).startswith('Done.')
+    assert start_and_wait(page).startswith('Done in ')
     text = pdf_text(out)
     assert 'Alice' not in text
     assert 'John' not in text, 'added term "John Doe" was not redacted'
@@ -431,7 +431,7 @@ def test_status_shows_survey_and_progress(page, tmp_path, sample_pdf):
     fill_dirs(page, tmp_path)
     page.fill('#terms', 'Alice Smith')
     status = start_and_wait(page)
-    assert status == 'Done. 1 file redacted and 1 had no matches.'
+    assert status == 'Done in under 1 sec. 1 file redacted and 1 had no matches.'
     assert page.evaluate("document.getElementById('progressBar').style.width") == '100%'
 
 
@@ -692,7 +692,7 @@ def test_ui_without_tesseract_end_to_end(browser, server, tmp_path, monkeypatch)
     page.click('text=Start Redaction')
     page.wait_for_function("document.getElementById('status').dataset.state === 'done'", timeout=30000)
     assert page.inner_text('#status') == (
-        "Done. 0 files redacted.\n1 scanned PDF and 1 image couldn't be redacted because Tesseract isn't installed. "
+        "Done in under 1 sec. 0 files redacted.\n1 scanned PDF and 1 image couldn't be redacted because Tesseract isn't installed. "
         "Install Tesseract to redact scanned PDFs and images (click the badge in the top-right corner for help).")
     assert page.is_disabled('#showOutput')
     ctx.close()
@@ -742,3 +742,63 @@ def test_folder_mode_footer_is_blank_while_loading(page):
     page.click('#inputDir ~ button')
     page.wait_for_selector('#browser.open')
     assert page.inner_text('#browserSelection') == ''
+
+
+# ─── Elapsed and remaining time ────────────────────────────────────────────────
+
+@pytest.mark.parametrize('seconds, text', [(0, '0 sec'), (7.9, '7 sec'), (59, '59 sec'), (60, '1 min'),
+                                           (125, '2 min 5 sec'), (3600, '1 hr'), (3720, '1 hr 2 min')])
+def test_format_duration(page, seconds, text):
+    assert page.evaluate("s => formatDuration(s)", seconds) == text
+
+
+@pytest.mark.parametrize('seconds, text', [(None, 'Estimating time left…'), (3, 'Almost done'), (7, 'About 5 sec left'),
+                                           (33, 'About 35 sec left'), (61, 'About 1 min left'),
+                                           (144, 'About 2 min 20 sec left'), (1290, 'About 22 min left')])
+def test_describe_remaining(page, seconds, text):
+    assert page.evaluate("s => describeRemaining(s)", seconds) == text
+
+
+def test_running_status_shows_elapsed_and_remaining(page):
+    data = status_data(running=True, phase='redacting', done=3, total=10, elapsed=12.0, remaining=33.0,
+                       survey={'counts': {'text PDF': 10}, 'pages': 10, 'scan_pages': 0})
+    text, _ = render(page, data)
+    assert text.split('\n') == ['Found 10 PDFs.', 'Redacting… 3 of 10 files done.', 'Elapsed 12 sec · About 35 sec left']
+    width = page.evaluate("parseFloat(document.getElementById('progressBar').style.width)")
+    assert width == pytest.approx(100 * 12 / 45, abs=0.5), 'progress bar is time-based once there is an estimate'
+
+
+def test_running_status_before_an_estimate(page):
+    data = status_data(running=True, phase='redacting', done=0, total=10, elapsed=0.6, remaining=None,
+                       pages_done=2, pages_total=10)
+    text, _ = render(page, data)
+    assert 'Elapsed 0 sec · Estimating time left…' in text
+    assert page.evaluate("document.getElementById('progressBar').style.width") == '20%', 'pages until an estimate exists'
+
+
+def test_times_count_along_between_updates(page):
+    data = status_data(running=True, phase='redacting', done=3, total=10, elapsed=10.0, remaining=33.0)
+    page.evaluate("d => { receiveTiming(d); renderStatus(d); }", data)
+    assert 'Elapsed 10 sec · About 35 sec left' in page.inner_text('#status')
+    page.wait_for_timeout(2300)
+    page.evaluate("() => renderStatus(timing.data)")  # what the once-a-second refresh does
+    assert 'Elapsed 12 sec · About 30 sec left' in page.inner_text('#status')
+
+
+def test_estimate_is_smoothed(page):
+    first = status_data(running=True, phase='redacting', done=3, total=10, elapsed=10.0, remaining=40.0)
+    page.evaluate("d => receiveTiming(d)", first)
+    jumpy = dict(first, remaining=20.0)
+    page.evaluate("d => { receiveTiming(d); renderStatus(d); }", jumpy)
+    assert 'About 30 sec left' in page.inner_text('#status'), 'a sudden drop to 20 is blended with the 40 counting down'
+
+
+@pytest.mark.parametrize('elapsed, cancelled, expected', [
+    (0.4, False, 'Done in under 1 sec. 1 file redacted.'),
+    (125.0, False, 'Done in 2 min 5 sec. 1 file redacted.'),
+    (5.2, True, 'Cancelled after 5 sec. 1 file was redacted before stopping.'),
+    (None, False, 'Done. 1 file redacted.'),
+])
+def test_finished_message_says_how_long_it_took(page, elapsed, cancelled, expected):
+    data = status_data(results=[ok('a.pdf')], total=3 if cancelled else 1, done=1, elapsed=elapsed, cancelled=cancelled)
+    assert render(page, data)[0] == expected
