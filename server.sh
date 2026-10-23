@@ -6,7 +6,7 @@ source "$APP_DIR/app.conf"
 APP_TITLE="${APP_TITLE:-$APP_NAME}"
 PID_FILE="$APP_DIR/.server.pid"
 PORT_FILE="$APP_DIR/.server.port"
-CODE_FILE="$APP_DIR/.server.code"   # checksum of app.py the running server was started with
+CODE_FILE="$APP_DIR/.server.code"   # checksum of the app files the running server was started with
 LOG_FILE="$APP_DIR/server.log"
 DEFAULT_PORT="${PORT:-5903}"  # PORT comes from app.conf (sourced above)
 
@@ -26,8 +26,9 @@ open_browser() {
 }
 
 code_checksum() {
-  # Content, not modification time: AirDrop and copies keep the old date
-  cksum < "$APP_DIR/app.py"
+  # Content, not modification time: AirDrop and copies keep the old date.
+  # pii.py is imported at startup, so a change to it also needs a restart.
+  cat "$APP_DIR/app.py" "$APP_DIR/pii.py" | cksum
 }
 
 start() {

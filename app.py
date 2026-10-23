@@ -109,14 +109,19 @@ def _read_app_config():
 _APP_CONFIG = _read_app_config()
 
 def _code_fingerprint():
-    """Hash of app.py on disk. Compared with the one taken at startup, it tells the
-    page when the running server is older than the files (updated but not restarted)."""
+    """Hash of the app files on disk. Compared with the one taken at startup, it tells
+    the page when the running server is older than the files (updated but not restarted)."""
     import hashlib
-    try:
-        with open(os.path.abspath(__file__), 'rb') as f:
-            return hashlib.sha256(f.read()).hexdigest()
-    except OSError:
-        return None
+    base = os.path.dirname(os.path.abspath(__file__))
+    digest = hashlib.sha256()
+    for name in ('app.py', 'pii.py'):
+        try:
+            with open(os.path.join(base, name), 'rb') as f:
+                digest.update(f.read())
+        except OSError:
+            if name == 'app.py':
+                return None
+    return digest.hexdigest()
 
 _STARTED_FINGERPRINT = _code_fingerprint()
 APP_NAME = _APP_CONFIG.get('APP_NAME') or os.path.basename(APP_DIR)
@@ -1139,7 +1144,7 @@ class Handler(SimpleHTTPRequestHandler):
             current = _code_fingerprint()
             outdated = current is not None and current != _STARTED_FINGERPRINT
             if outdated:
-                logger.warning('app.py changed since this server started; restart it to use the new version')
+                logger.warning('app files changed since this server started; restart it to use the new version')
             self._json_response({'outdated': outdated})
             return
         if path == '/list_dir':

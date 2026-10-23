@@ -22,7 +22,7 @@ def copy(tmp_path):
     """A copy of the app on a free port, with `open` stubbed so no browser window opens."""
     app_dir = tmp_path / 'docucloak'
     app_dir.mkdir()
-    for name in ('app.py', 'index.html', 'logo.svg', 'server.sh', 'app.conf'):
+    for name in ('app.py', 'pii.py', 'index.html', 'logo.svg', 'server.sh', 'app.conf'):
         shutil.copy2(REPO_DIR / name, app_dir / name)
     for folder in ('css', 'js'):
         shutil.copytree(REPO_DIR / folder, app_dir / folder)
@@ -69,6 +69,15 @@ def test_start_restarts_when_app_py_changed_even_with_old_date(copy):
     assert 'was updated since it started; restarting it' in out
     time.sleep(1)
     assert pid(app_dir) != first
+
+
+def test_start_restarts_when_pii_py_changed(copy):
+    app_dir, sh = copy
+    sh('start')
+    time.sleep(1)
+    pii_py = app_dir / 'pii.py'
+    pii_py.write_text(pii_py.read_text() + '\n# updated\n')
+    assert 'was updated since it started; restarting it' in sh('start')
 
 
 def test_server_started_by_an_older_server_sh_is_restarted(copy):

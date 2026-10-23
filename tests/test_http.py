@@ -605,6 +605,17 @@ def test_fingerprint_is_content_based(tmp_path, monkeypatch):
     assert app._code_fingerprint() != first
 
 
+def test_fingerprint_includes_pii_module(tmp_path, monkeypatch):
+    fake = tmp_path / 'app.py'
+    pii_module = tmp_path / 'pii.py'
+    fake.write_text('one')
+    pii_module.write_text('one')
+    monkeypatch.setattr(app, '__file__', str(fake))
+    first = app._code_fingerprint()
+    pii_module.write_text('two')
+    assert app._code_fingerprint() != first
+
+
 # ─── Static assets: css/ and js/ ───────────────────────────────────────────────
 
 @pytest.mark.parametrize('path, content_type', [
