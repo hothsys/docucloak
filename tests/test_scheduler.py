@@ -185,14 +185,18 @@ def test_cancel_stops_split_job(server, tmp_path, monkeypatch):
     monkeypatch.setattr(app, 'TEXT_CHUNK_PAGES', 1)
     make_pdf(tmp_path / 'in' / 'big.pdf', [['Alice Smith']] * 40)
     real = app._task_analyze
+    started = threading.Event()
+    release = threading.Event()
 
     def slow(*a):
-        time.sleep(0.1)
+        started.set()
+        release.wait(5)
         return real(*a)
     monkeypatch.setattr(app, '_task_analyze', slow)
     server.post_json('/redact', payload(tmp_path))
-    time.sleep(0.4)
+    assert started.wait(5), 'no analyze task started'
     server.post_json('/cancel')
+    release.set()
     state = wait_for_job(10)
     assert state['results'] == [] and not (tmp_path / 'out' / 'big_redacted.pdf').exists()
 
