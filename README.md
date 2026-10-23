@@ -1,6 +1,6 @@
 # <img src="logo.svg" width="97" height="112" align="absmiddle" />&nbsp;&nbsp;DocuCloak
 
-A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
+A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
 
 <img width="1950" height="1626" alt="image" src="https://github.com/user-attachments/assets/65293b53-28f3-4254-bbd3-3901cfb0ec48" />
 
@@ -10,9 +10,10 @@ A web app that runs on your Mac and redacts PDFs and images. Point it at an inpu
 - **PDFs:** matched page text is removed from the file, not just covered, and a black box is drawn in its place (PyMuPDF)
 - **Scanned PDFs:** pages without a text layer are read with Tesseract OCR, and the image pixels under each match are blacked out
 - **Images:** text is read with Tesseract OCR and matches are covered with black boxes
-- **Hidden PDF content:** every redacted PDF copy has its document properties (title, author and so on, including XMP metadata) and bookmarks removed, and is rewritten so removed content can't be recovered from the file. A term found only in those places still produces a cleaned copy
+- **Hidden PDF content:** every redacted PDF copy has its document properties (title, author and so on, including XMP metadata) and bookmarks removed, and is rewritten so removed content can't be recovered from the file. A term or detected value found only in those places still produces a cleaned copy
 - Case-insensitive matching; a term also matches inside longer words (`secret` matches `secret123`). Multi-word terms like `Alice Smith` work in PDFs, scans and images
 - Terms come from a text field, a terms file, or both. The terms file is re-read from disk on every run, so you can edit it and run again
+- **Automatic PII detection (optional):** find email addresses, credit card numbers, US Social Security numbers and US phone numbers without listing each value. Email, cards and SSNs are on by default; phone detection is off because plain 10-digit numbers are ambiguous. Detected values use the same search-and-redact path as your terms, and only per-type counts are shown or logged—never the values themselves
 - Copies are written as `<name>_redacted.<ext>` in the output directory, in the same subfolders as in the input directory (so same-named files in different folders never collide). The output directory is created if it doesn't exist
 - Files with no matches are skipped: no copy is written. If a file no longer matches after you change the terms, its old `_redacted` copy is deleted, so the output directory always reflects the latest terms
 - Live progress: which file(s) are being redacted right now, what was found (PDFs, scanned PDFs, images), how many files are done, elapsed time and an estimate of the time left, a progress bar, and each file's result in plain language. Cancel stops the current job
@@ -21,6 +22,21 @@ A web app that runs on your Mac and redacts PDFs and images. Point it at an inpu
 - Remembers the directories and terms file location between visits; the terms themselves are never saved
 - Detailed log in `server.log`: UI actions, each file's outcome, and the number of terms used (never the terms themselves). It rotates at 5 MB, keeping the 3 most recent old logs (`server.log.1` to `server.log.3`)
 - Only reachable from your own Mac: the server doesn't accept connections from other devices on your network
+
+## Automatic PII detection
+
+The **Also find automatically** row adds these detectors to a run. Use them with your own terms, or with none at all:
+
+| Type | What it accepts | Default |
+| --- | --- | --- |
+| Email address | `name@example.com`, including `+` tags and subdomains | On |
+| Credit card number | 13–19 digits, with or without spaces or hyphens. Requires a Luhn checksum and a major issuer prefix (or a nearby card label); a grouped number with a known issuer is still redacted if one digit is mistyped | On |
+| US Social Security number | The `123-45-6789` (or space-separated) shape. A bare 9-digit number is only treated as an SSN when `SSN`, `Social Security` or `Taxpayer ID` appears next to it and the SSA range rules pass | On |
+| US phone number | 10 digits, with optional `1`/`+1`, parentheses, dots, spaces or hyphens, and an optional extension. The area code must start with 2–9 | Off |
+
+Digit count separates the ambiguous cases: an SSN is 9 digits and a US phone is 10, so a hyphenless `123456789` is never treated as a phone, while a hyphenless `5551234567` is checked only when phone detection is on.
+
+Detection runs on PDF text and on the OCR text from scanned pages and images, so it works the same way as your terms. It is best-effort and US-centric. It does not find names, addresses, dates of birth or account/passport numbers; add those as terms. See the limitations below.
 
 ## Performance
 
@@ -75,8 +91,8 @@ To change the port, edit `PORT` in `app.conf`.
 ## Usage
 
 1. Set the **Input directory** and the **Output directory**. Type a path or click **Browse** to pick a folder in DocuCloak's file browser, which opens at the folder currently in the field (or your home folder if that folder doesn't exist) and has shortcuts to Home, Desktop, Documents and Downloads. The output directory must be a different folder from the input directory; it may be inside it, and files already in it are never scanned.
-2. Enter terms in the text field (comma or newline separated), and/or click **Choose File** to pick a terms file in the same format.
-3. Click **Start Redaction**, then check the results list: each file shows **redacted** (with its output name), **skipped: no matches**, or **error** with the reason.
+2. Enter terms in the text field (comma or newline separated), and/or click **Choose File** to pick a terms file in the same format. Optionally choose what to find under **Also find automatically**.
+3. Click **Start Redaction**, then check the results list: each file shows **redacted** (with its output name and any automatic PII counts), **skipped: no matches**, or **error** with the reason. At least one term or one detector is required.
 
 If no terms are given and a `redact_terms.txt` file exists next to `app.py`, its terms are used instead.
 
@@ -84,6 +100,11 @@ If no terms are given and a `redact_terms.txt` file exists next to `app.py`, its
 
 Check redacted output before sharing it.
 
+- **Automatic detection is best-effort.** It favors not missing a value over avoiding every false positive, and it only knows the formats described above. Review the redacted copy.
+- **Phone detection is noisy.** Any 10-digit number (an order, account or ticket number) can look like a US phone. Leave it off unless your documents contain phone numbers.
+- **Bare 9-digit SSNs need a label.** Without `SSN`, `Social Security` or `Taxpayer ID` nearby, a 9-digit number is left alone because ZIP+4s, EINs and invoice numbers share its shape. Separated SSNs are redacted by shape.
+- **Only US phone numbers are recognized.** International numbers and unusual extension formats are not detected.
+- **Detection does not find names or addresses.** Those still need to be entered as terms.
 - **OCR can miss text.** Scanned pages and images are only as good as Tesseract's reading of them: faint, skewed, low-resolution or handwritten text may not be recognized, and only English is installed by default.
 - **Images inside text pages are not OCR'd.** OCR runs on PDF pages with no text layer; on a page that has text, an embedded image (such as a scanned signature or stamp) is not searched.
 - **Other hidden PDF content is not searched.** Comments and other annotations, form field values and file attachments are not checked for terms.
@@ -93,6 +114,7 @@ Check redacted output before sharing it.
 
 ```
 app.py              server and redaction engine
+pii.py              automatic PII detectors (email, cards, SSNs, phones)
 index.html          browser UI (markup only)
 css/styles.css      styles
 js/                 browser code: core.js (shared helpers), tesseract.js, browser.js (file browser),
