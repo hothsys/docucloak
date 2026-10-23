@@ -77,7 +77,8 @@ def test_unknown_get_returns_404(server):
 
 # ─── POST /redact: validation ──────────────────────────────────────────────────
 
-NO_TERMS = 'Enter at least one term to redact, or choose a terms file.'
+NO_TERMS = ('Enter at least one term to redact, choose a terms file, '
+            'or choose something to find automatically.')
 
 
 def test_redact_rejects_missing_terms(server, tmp_path, sample_pdf):
@@ -88,6 +89,18 @@ def test_redact_rejects_missing_terms(server, tmp_path, sample_pdf):
 def test_redact_rejects_whitespace_only_terms(server, tmp_path, sample_pdf):
     status, body = server.post_json('/redact', redact_payload(tmp_path, terms=' , \n', terms_file_content='\n\n'))
     assert status == 400
+
+
+def test_redact_accepts_enabled_pii_without_terms(server, tmp_path):
+    make_pdf(tmp_path / 'in' / 'pii.pdf', [['Email alice@example.com']])
+    _, state = server.redact_and_wait(redact_payload(tmp_path, pii_kinds=['email']))
+    assert state['results'][0]['result']['pii'] == {'email': 1}
+    assert 'alice@example.com' not in pdf_text(tmp_path / 'out' / 'pii_redacted.pdf')
+
+
+def test_redact_ignores_unknown_pii_kinds(server, tmp_path, sample_pdf):
+    status, body = server.post_json('/redact', redact_payload(tmp_path, pii_kinds=['nonsense']))
+    assert (status, body) == (400, {'error': NO_TERMS})
 
 
 def test_redact_rejects_malformed_json(server):
@@ -170,7 +183,7 @@ def test_redact_with_only_file_terms(server, tmp_path, sample_pdf):
 
 
 def test_redact_scans_recursively_and_filters_extensions(server, tmp_path, monkeypatch):
-    monkeypatch.setattr(app, '_redact_image', lambda i, t, o, c: ({'matches': 0}, None))
+    monkeypatch.setattr(app, '_redact_image', lambda i, t, o, c, *a: ({'matches': 0}, None))
     inp = tmp_path / 'in'
     make_pdf(inp / 'top.pdf', [SAMPLE_LINES])
     make_pdf(inp / 'a' / 'b' / 'nested.pdf', [SAMPLE_LINES])
@@ -257,11 +270,11 @@ def test_new_redact_request_cancels_running_job(server, tmp_path, sample_pdf, mo
     real = app._redact_file
     gate = []
 
-    def slow(fp, out, terms, cancel):
+    def slow(fp, out, terms, cancel, pii_kinds=()):
         if not gate:
             gate.append(cancel)
             cancel.wait(5)
-        return real(fp, out, terms, cancel)
+        return real(fp, out, terms, cancel, pii_kinds)
     monkeypatch.setattr(app, '_redact_file', slow)
     server.post_json('/redact', redact_payload(tmp_path, terms='Alice Smith'))
     while not gate:
@@ -381,7 +394,7 @@ def test_cancel_stops_running_job(server, tmp_path, monkeypatch):
         make_pdf(tmp_path / 'in' / f'f{i}.pdf', [['x']])
     started = []
 
-    def blocking(fp, out, terms, cancel):
+    def blocking(fp, out, terms, cancel, pii_kinds=()):
         started.append(fp)
         cancel.wait(5)
         return {'input': str(fp), 'path': str(out), 'result': None, 'error': 'cancelled'}

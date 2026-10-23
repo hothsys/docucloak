@@ -168,10 +168,10 @@ def test_failed_split_file_reports_one_error_and_others_continue(server, tmp_pat
     make_pdf(tmp_path / 'in' / 'ok.pdf', [['Alice Smith']])
     real = app._task_analyze
 
-    def flaky(job_id, path, pages, terms):
-        if pages == [2, 3]:
+    def flaky(*a):
+        if a[2] == [2, 3]:
             raise app.RedactionError('page 3 is damaged')
-        return real(job_id, path, pages, terms)
+        return real(*a)
     monkeypatch.setattr(app, '_task_analyze', flaky)
     _, state = server.redact_and_wait(payload(tmp_path))
     by_name = {os.path.basename(r['input']): r for r in state['results']}

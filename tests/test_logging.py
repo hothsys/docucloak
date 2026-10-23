@@ -69,7 +69,7 @@ def test_start_redaction_logs_click_term_counts_and_every_file(server, tmp_path,
     assert f'Redacting {hit_in}' in msgs
     assert f'Redacting {miss_in}' in msgs
     assert f"Redacted {hit_in} -> {tmp_path / 'out' / 'hit_redacted.pdf'} (2 match(es))" in msgs
-    assert f'Skipped {miss_in}: no redaction terms found; file left untouched, no output written' in msgs
+    assert f'Skipped {miss_in}: nothing matched; file left untouched, no output written' in msgs
     assert any(m.startswith('Redaction job finished in') and '1 redacted, 1 skipped (no matches), 0 failed' in m
                for m in msgs)
 
@@ -117,6 +117,16 @@ def test_worker_threads_are_named(server, tmp_path, log):
     assert any(t.startswith('redact-worker') for t in threads)
 
 
+def test_enabled_pii_types_are_logged_without_values(server, tmp_path, log):
+    make_pdf(tmp_path / 'in' / 'doc.pdf', [['alice@example.com and SSN 123-45-6789']])
+    server.redact_and_wait(payload(tmp_path, pii_kinds=['email', 'ssn']))
+    msgs = messages(log)
+    assert 'Automatic PII detection: email address, Social Security number' in msgs
+    redacted = [m for m in msgs if m.startswith('Redacted ')]
+    assert redacted and '1 email address' in redacted[0] and '1 Social Security number' in redacted[0]
+    assert not any('alice@example.com' in m or '123-45-6789' in m for m in msgs)
+
+
 def test_fallback_terms_file_use_is_logged(server, tmp_path, log, isolated_app):
     (isolated_app / 'redact_terms.txt').write_text('John Doe')
     make_pdf(tmp_path / 'in' / 'doc.pdf', [['John Doe']])
@@ -126,7 +136,7 @@ def test_fallback_terms_file_use_is_logged(server, tmp_path, log, isolated_app):
 
 
 @pytest.mark.parametrize('kw, expected', [
-    ({}, 'Redaction not started: no terms provided'),
+    ({}, 'Redaction not started: no terms and no PII types provided'),
     ({'terms': 'x', 'input_dir': '/nope'}, "Redaction not started: invalid input directory '/nope'"),
     ({'terms': 'x', 'terms_file_path': '/nope/terms.txt'}, 'Cannot read terms file /nope/terms.txt'),
 ])
