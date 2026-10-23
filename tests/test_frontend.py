@@ -47,6 +47,12 @@ def fill_dirs(page, tmp_path):
     page.fill('#outputDir', str(tmp_path / 'out'))
 
 
+def disable_pii(page):
+    """Turn off automatic detection for tests that exercise term-only behaviour."""
+    for field in ('piiEmail', 'piiCreditCard', 'piiSsn', 'piiPhone'):
+        page.uncheck('#' + field)
+
+
 def start_and_wait(page):
     page.evaluate("() => { const el = document.getElementById('status'); el.textContent = ''; el.dataset.state = ''; }")
     page.click('text=Start Redaction')
@@ -129,6 +135,22 @@ def test_terms_saved_by_older_versions_are_purged(page):
     assert page.input_value('#terms') == ''
 
 
+def test_pii_checkboxes_default_to_recommended_types(page):
+    assert page.is_checked('#piiEmail')
+    assert page.is_checked('#piiCreditCard')
+    assert page.is_checked('#piiSsn')
+    assert not page.is_checked('#piiPhone')
+
+
+def test_pii_checkbox_choices_persist_across_reload(page):
+    page.uncheck('#piiSsn')
+    page.check('#piiPhone')
+    page.wait_for_function("localStorage.getItem('dc_piiSsn') === '0' && localStorage.getItem('dc_piiPhone') === '1'")
+    page.reload()
+    assert not page.is_checked('#piiSsn')
+    assert page.is_checked('#piiPhone')
+
+
 # ─── Layout ────────────────────────────────────────────────────────────────────
 
 def test_input_and_output_directories_are_on_separate_full_width_rows(page):
@@ -207,6 +229,7 @@ def test_start_redaction_does_not_send_spurious_cancel(page, tmp_path, sample_pd
 
 def test_skipped_file_is_shown_as_skipped(page, tmp_path, sample_pdf):
     fill_dirs(page, tmp_path)
+    disable_pii(page)
     page.fill('#terms', 'not in the document')
     start_and_wait(page)
     page.wait_for_function("document.querySelectorAll('.result-item').length === 1")
@@ -311,6 +334,7 @@ def test_reopening_shows_no_stale_listing(page, folders):
 
 def test_redact_with_textarea_terms(page, tmp_path, sample_pdf):
     fill_dirs(page, tmp_path)
+    disable_pii(page)
     page.fill('#terms', 'Alice Smith')
     status = start_and_wait(page)
     assert status == 'Done in under 1 sec. 1 file redacted.'
@@ -319,6 +343,25 @@ def test_redact_with_textarea_terms(page, tmp_path, sample_pdf):
     assert item.count() == 1
     assert 'ok' in item.get_attribute('class')
     assert item.inner_text().split('\n') == ['sample.pdf', 'Saved as sample_redacted.pdf']
+
+
+def test_redact_pii_without_terms(page, tmp_path):
+    from conftest import make_pdf
+    make_pdf(tmp_path / 'in' / 'pii.pdf', [['Email alice@example.com']])
+    fill_dirs(page, tmp_path)
+    status = start_and_wait(page)
+    assert 'Automatically found 1 email address.' in status
+    assert 'alice@example.com' not in pdf_text(tmp_path / 'out' / 'pii_redacted.pdf')
+
+
+def test_start_redaction_sends_enabled_pii_kinds(page, tmp_path, sample_pdf):
+    fill_dirs(page, tmp_path)
+    page.fill('#terms', 'Alice Smith')
+    page.uncheck('#piiSsn')
+    page.check('#piiPhone')
+    bodies = capture_redact_requests(page)
+    start_and_wait(page)
+    assert bodies[-1]['pii_kinds'] == ['email', 'credit_card', 'phone']
 
 
 def test_redact_with_terms_file(page, tmp_path, sample_pdf):
@@ -360,7 +403,8 @@ def test_no_terms_file_sends_empty_path(page, tmp_path, sample_pdf):
     bodies = capture_redact_requests(page)
     start_and_wait(page)
     assert bodies[-1] == {'input_dir': str(tmp_path / 'in'), 'output_dir': str(tmp_path / 'out'),
-                          'terms': 'x', 'terms_file_path': ''}
+                          'terms': 'x', 'terms_file_path': '',
+                          'pii_kinds': ['email', 'credit_card', 'ssn']}
 
 
 def test_server_error_is_shown(page, tmp_path):
@@ -429,6 +473,7 @@ def test_status_shows_survey_and_progress(page, tmp_path, sample_pdf):
     from PIL import Image
     Image.new('RGB', (50, 50), 'white').save(tmp_path / 'in' / 'blank.png')
     fill_dirs(page, tmp_path)
+    disable_pii(page)
     page.fill('#terms', 'Alice Smith')
     status = start_and_wait(page)
     assert status == 'Done in under 1 sec. 1 file redacted and 1 had no matches.'
@@ -515,7 +560,7 @@ def test_status_while_redacting_without_current_files(page):
     ([ok('a'), ok('b')], 2, False, 'Done. 2 files redacted.'),
     ([ok('a')], 1, False, 'Done. 1 file redacted.'),
     ([ok('a'), skip('b'), skip('c'), bad('d')], 4, False, "Done. 1 file redacted, 2 had no matches and 1 couldn't be redacted (see below)."),
-    ([skip('a'), skip('b')], 2, False, 'Done. None of the files contain your terms, so no copies were made.'),
+    ([skip('a'), skip('b')], 2, False, 'Done. None of the files contain anything to redact, so no copies were made.'),
     ([bad('a')], 1, False, "Done. 0 files redacted and 1 couldn't be redacted (see below)."),
     ([], 0, False, 'No PDFs or images were found in the input directory.'),
     ([ok('a')], 10, True, 'Cancelled. 1 file was redacted before stopping.'),
@@ -529,6 +574,21 @@ def test_status_while_redacting_without_current_files(page):
 def test_finished_messages(page, results, total, cancelled, expected):
     data = status_data(results=results, total=total, done=len(results), cancelled=cancelled)
     assert render(page, data) == (expected, 'done')
+
+
+def test_results_show_automatic_pii_counts(page):
+    result = {'input': '/in/id.pdf', 'path': '/out/id_redacted.pdf',
+              'result': {'matches': 2, 'pii': {'email': 2}}, 'error': None}
+    page.evaluate("r => renderResults(r)", [result])
+    assert page.locator('.result-item .meta').inner_text() == 'Saved as id_redacted.pdf · 2 email addresses'
+
+
+def test_finished_message_reports_automatically_found_pii(page):
+    result = {'input': '/in/id.pdf', 'path': '/out/id_redacted.pdf',
+              'result': {'matches': 3, 'pii': {'email': 2, 'ssn': 1}}, 'error': None}
+    text, state = render(page, status_data(results=[result], total=1, done=1))
+    assert text == 'Done. 1 file redacted.\nAutomatically found 2 email addresses and 1 Social Security number.'
+    assert state == 'done'
 
 
 def test_cancel_during_run_says_cancelling_then_cancelled(page, tmp_path, sample_pdf):
@@ -649,6 +709,7 @@ def test_show_output_folder_button(page, tmp_path, sample_pdf):
 
 def test_show_output_folder_disabled_when_nothing_was_saved(page, tmp_path, sample_pdf):
     fill_dirs(page, tmp_path)
+    disable_pii(page)
     page.fill('#terms', 'not in the document')
     start_and_wait(page)
     assert page.is_visible('#showOutput') and page.is_disabled('#showOutput')

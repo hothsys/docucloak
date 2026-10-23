@@ -14,4 +14,6 @@ window.addEventListener('load', () => {
   // For the terms text field, report only how many terms it holds
   const termsEl = document.getElementById('terms');
   termsEl.addEventListener('change', () => logEvent({event: 'field_changed', field: 'terms', count: countTerms(termsEl.value)}));
+  // Persist detector choices as soon as they change, not only when a run starts
+  PII_FIELD_IDS.forEach(id => document.getElementById(id).addEventListener('change', saveFields));
 });
