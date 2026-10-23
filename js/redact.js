@@ -109,6 +109,14 @@ function describeRemaining(seconds) {
   return `About ${formatDuration(Math.round(seconds / 60) * 60)} left`;
 }
 
+// The scheduler can work on several files at once; name up to three of them
+function describeCurrent(files) {
+  if (!files || !files.length) return '';
+  const shown = files.slice(0, 3);
+  const extra = files.length - shown.length;
+  return `Now: ${shown.join(', ')}` + (extra ? ` and ${plural(extra, 'more file')}` : '');
+}
+
 function finishedMessage(data) {
   const results = data.results || [];
   const redacted = results.filter(r => r.path).length;
@@ -149,6 +157,8 @@ function renderStatus(data) {
     const lines = [];
     if (data.survey) lines.push(`Found ${describeFound(data.survey)}.`);
     lines.push(`Redacting… ${data.done} of ${plural(data.total, 'file')} done.`);
+    const now = describeCurrent(data.current);
+    if (now) lines.push(now);
     if (t.elapsed !== null && t.elapsed !== undefined) {
       lines.push(`Elapsed ${formatDuration(t.elapsed)} · ${describeRemaining(t.remaining)}`);
     }

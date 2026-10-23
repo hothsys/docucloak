@@ -456,7 +456,7 @@ def render(page, data):
 
 def status_data(**kw):
     data = {'running': False, 'phase': 'idle', 'done': 0, 'total': 0, 'pages_done': 0, 'pages_total': 0,
-            'survey': None, 'cancelled': False, 'results': []}
+            'survey': None, 'cancelled': False, 'current': [], 'results': []}
     data.update(kw)
     return data
 
@@ -497,6 +497,18 @@ def test_status_while_redacting_never_mentions_workers_or_ocr(page):
     assert state == 'busy'
     for jargon in ('worker', 'OCR', 'text PDF', 'mixed', 'Pages:'):
         assert jargon not in text
+
+
+def test_status_while_redacting_names_the_files_in_progress(page):
+    data = status_data(running=True, phase='redacting', done=2, total=10, current=['alpha.pdf', 'beta.pdf'])
+    text, state = render(page, data)
+    assert 'Redacting… 2 of 10 files done.\nNow: alpha.pdf, beta.pdf' in text
+    assert state == 'busy'
+
+
+def test_status_while_redacting_without_current_files(page):
+    text, _ = render(page, status_data(running=True, phase='redacting', done=1, total=10))
+    assert 'Now:' not in text
 
 
 @pytest.mark.parametrize('results, total, cancelled, expected', [
@@ -757,6 +769,18 @@ def test_format_duration(page, seconds, text):
                                            (144, 'About 2 min 20 sec left'), (1290, 'About 22 min left')])
 def test_describe_remaining(page, seconds, text):
     assert page.evaluate("s => describeRemaining(s)", seconds) == text
+
+
+@pytest.mark.parametrize('files, text', [
+    ([], ''),
+    (['a.pdf'], 'Now: a.pdf'),
+    (['a.pdf', 'b.pdf'], 'Now: a.pdf, b.pdf'),
+    (['a.pdf', 'b.pdf', 'c.pdf'], 'Now: a.pdf, b.pdf, c.pdf'),
+    (['a.pdf', 'b.pdf', 'c.pdf', 'd.pdf'], 'Now: a.pdf, b.pdf, c.pdf and 1 more file'),
+    (['a', 'b', 'c', 'd', 'e'], 'Now: a, b, c and 2 more files'),
+])
+def test_describe_current(page, files, text):
+    assert page.evaluate("files => describeCurrent(files)", files) == text
 
 
 def test_running_status_shows_elapsed_and_remaining(page):

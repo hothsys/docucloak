@@ -15,7 +15,7 @@ A web app that runs on your Mac and redacts PDFs and images. Point it at an inpu
 - Terms come from a text field, a terms file, or both. The terms file is re-read from disk on every run, so you can edit it and run again
 - Copies are written as `<name>_redacted.<ext>` in the output directory, in the same subfolders as in the input directory (so same-named files in different folders never collide). The output directory is created if it doesn't exist
 - Files with no matches are skipped: no copy is written. If a file no longer matches after you change the terms, its old `_redacted` copy is deleted, so the output directory always reflects the latest terms
-- Live progress: what was found (PDFs, scanned PDFs, images), how many files are done, elapsed time and an estimate of the time left, a progress bar, and each file's result in plain language. Cancel stops the current job
+- Live progress: which file(s) are being redacted right now, what was found (PDFs, scanned PDFs, images), how many files are done, elapsed time and an estimate of the time left, a progress bar, and each file's result in plain language. Cancel stops the current job
 - Show files: click a file in the results to see it in Finder (File Explorer on Windows): the redacted copy, or the original if nothing was saved. **Show output folder** opens the output directory
 - Password-protected PDFs, unreadable files and files that crash the PDF library are reported as errors without stopping the rest of the job
 - Remembers the directories and terms file location between visits; the terms themselves are never saved

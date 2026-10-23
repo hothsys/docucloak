@@ -1,6 +1,8 @@
 """Elapsed time and the time-remaining estimate (_Progress)."""
 
+import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -111,6 +113,22 @@ def test_lifecycle_start_finish_retry_and_drop():
     assert not p.pending and not p.running
 
 
+def test_current_files_lists_running_files_once():
+    p = app._Progress(3)
+    for task_id, file in [(1, Path('/in/a.pdf')), (2, Path('/in/a.pdf')), (3, Path('/in/b.png'))]:
+        p.add(task_id, 'text', 1.0, file)
+    assert p.current_files() == []
+    p.start(1)
+    p.start(2)
+    p.start(3)
+    assert p.current_files() == ['a.pdf', 'b.png'], 'two parts of a.pdf count as one file'
+    p.finish(1)
+    assert p.current_files() == ['a.pdf', 'b.png'], 'the other part of a.pdf is still running'
+    p.finish(2)
+    p.finish(3)
+    assert p.current_files() == []
+
+
 def test_elapsed_freezes_when_finished():
     p = app._Progress(1)
     p.started -= 5
@@ -134,7 +152,6 @@ def test_status_reports_elapsed_and_remaining_during_a_run(server, tmp_path, mon
     monkeypatch.setattr(app, 'WORKERS', 2)
     app._shutdown_pool()
     server.post_json('/redact', {'input_dir': str(tmp_path / 'in'), 'output_dir': str(tmp_path / 'out'), 'terms': 'Alice Smith'})
-    import json
     seen = []
     while True:
         st = json.loads(server.get('/status')[2])
@@ -148,3 +165,29 @@ def test_status_reports_elapsed_and_remaining_during_a_run(server, tmp_path, mon
     assert estimates, 'an estimate appears once two files are done'
     assert max(estimates) < 2.0, '6 files x 0.4s on 2 workers: about 1.2s in total'
     assert st['elapsed'] >= 1.0 and st['remaining'] is None
+
+
+def test_status_reports_the_files_in_progress(server, tmp_path, monkeypatch):
+    names = ['alpha.pdf', 'beta.pdf', 'gamma.pdf']
+    for name in names:
+        make_pdf(tmp_path / 'in' / name, [['Alice Smith']])
+    real = app._redact_file
+
+    def slow(*a):
+        time.sleep(0.5)
+        return real(*a)
+    monkeypatch.setattr(app, '_redact_file', slow)
+    monkeypatch.setattr(app, 'WORKERS', 3)
+    app._shutdown_pool()
+    server.post_json('/redact', {'input_dir': str(tmp_path / 'in'), 'output_dir': str(tmp_path / 'out'),
+                                 'terms': 'Alice Smith'})
+    seen = set()
+    while True:
+        st = json.loads(server.get('/status')[2])
+        if not st['running']:
+            break
+        seen.update(st['current'])
+        time.sleep(0.05)
+    app._shutdown_pool()
+    assert set(names) <= seen, 'each file showed up while it was being worked on'
+    assert st['current'] == [], 'nothing is in progress once the job finishes'

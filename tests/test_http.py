@@ -64,7 +64,7 @@ def test_status_idle(server):
     assert status == 200
     assert json.loads(body) == {'running': False, 'phase': 'idle', 'done': 0, 'total': 0, 'pages_done': 0,
                                 'pages_total': 0, 'survey': None, 'cancelled': False, 'elapsed': None,
-                                'remaining': None, 'results': [], 'errors': []}
+                                'remaining': None, 'current': [], 'results': [], 'errors': []}
 
 
 def test_unknown_get_returns_404(server):
