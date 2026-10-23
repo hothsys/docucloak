@@ -770,6 +770,12 @@ class _Progress:
                 for task_id in [k for k, v in table.items() if v[2] == file]:
                     del table[task_id]
 
+    def current_files(self):
+        """Base names of the files being worked on right now, without duplicates."""
+        with self.lock:
+            names = {os.path.basename(str(entry[2])) for entry in self.running.values() if entry[2] is not None}
+        return sorted(names)
+
     def end(self):
         with self.lock:
             self.finished = time.monotonic()
@@ -1373,14 +1379,16 @@ def _asset_version():
     return str(newest)
 
 def _timing(state):
-    """Elapsed seconds and estimated seconds left for /status (call with _job_lock held)."""
+    """Elapsed seconds, estimated seconds left and files in progress for /status
+    (call with _job_lock held)."""
     cancel = state['cancel']
     progress = getattr(cancel, 'progress', None)
     if state['running'] and progress is not None:
         remaining = progress.remaining() if state['phase'] == 'redacting' else None
         return {'elapsed': round(progress.elapsed(), 1),
-                'remaining': None if remaining is None else round(remaining, 1)}
-    return {'elapsed': state['elapsed'], 'remaining': None}
+                'remaining': None if remaining is None else round(remaining, 1),
+                'current': progress.current_files()}
+    return {'elapsed': state['elapsed'], 'remaining': None, 'current': []}
 
 def _browse_start_dir(current, want_file=False):
     """Folder the file browser opens in: the field's current location if it
