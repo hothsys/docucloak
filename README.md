@@ -30,11 +30,13 @@ The **Also find automatically** row adds these detectors to a run. Use them with
 | Type | What it accepts | Default |
 | --- | --- | --- |
 | Email address | `name@example.com`, including `+` tags and subdomains | On |
-| Credit card number | 13–19 digits, with or without spaces or hyphens. Requires a Luhn checksum and a major issuer prefix (or a nearby card label); a grouped number with a known issuer is still redacted if one digit is mistyped | On |
+| Credit card number | 13–19 digits, with or without spaces or hyphens. Requires a Luhn checksum and a major issuer prefix (or a nearby card label). A grouped number with a known issuer is accepted despite a failed checksum only when a card label is nearby. A number introduced as an account, invoice, reference or similar identifier is not treated as a card | On |
 | US Social Security number | The `123-45-6789` (or space-separated) shape. A bare 9-digit number is only treated as an SSN when `SSN`, `Social Security` or `Taxpayer ID` appears next to it and the SSA range rules pass | On |
 | US phone number | 10 digits, with optional `1`/`+1`, parentheses, dots, spaces or hyphens, and an optional extension. The area code must start with 2–9 | Off |
 
 Digit count separates the ambiguous cases: an SSN is 9 digits and a US phone is 10, so a hyphenless `123456789` is never treated as a phone, while a hyphenless `5551234567` is checked only when phone detection is on.
+
+Counts are occurrences, not unique values: if the same number appears on every page, it is counted each time.
 
 Detection runs on PDF text and on the OCR text from scanned pages and images, so it works the same way as your terms. It is best-effort and US-centric. It does not find names, addresses, dates of birth or account/passport numbers; add those as terms. See the limitations below.
 
@@ -100,7 +102,9 @@ If no terms are given and a `redact_terms.txt` file exists next to `app.py`, its
 
 Check redacted output before sharing it.
 
-- **Automatic detection is best-effort.** It favors not missing a value over avoiding every false positive, and it only knows the formats described above. Review the redacted copy.
+- **Automatic detection is best-effort.** It is tuned for high precision, but no detector is perfect and it only knows the formats described above. Review the redacted copy.
+- **Account, invoice and reference numbers are not cards.** A number introduced by one of those labels is left for your terms even when it is 13–19 digits, unless a card label such as `Card` or `Visa` is next to it.
+- **A few unlabelled account numbers can still look like cards.** If a card-shaped number has no account label and happens to pass the card checksum, it can be detected. Check the counts if your documents contain many long account numbers.
 - **Phone detection is noisy.** Any 10-digit number (an order, account or ticket number) can look like a US phone. Leave it off unless your documents contain phone numbers.
 - **Bare 9-digit SSNs need a label.** Without `SSN`, `Social Security` or `Taxpayer ID` nearby, a 9-digit number is left alone because ZIP+4s, EINs and invoice numbers share its shape. Separated SSNs are redacted by shape.
 - **Only US phone numbers are recognized.** International numbers and unusual extension formats are not detected.

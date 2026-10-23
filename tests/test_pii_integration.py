@@ -53,6 +53,24 @@ def test_pdf_phone_detection_is_opt_in(tmp_path):
         assert secret not in text
 
 
+def test_account_numbers_are_not_reported_as_cards(tmp_path):
+    src = make_pdf(tmp_path / 'in' / 'account.pdf', [['Account Number: 4111 1111 1111 1111']])
+    out = tmp_path / 'out' / 'account_redacted.pdf'
+    info = run(src, out, (pii.CREDIT_CARD,))
+    assert info['error'] is None
+    assert info['result']['skipped'] is True
+    assert not out.exists()
+
+
+def test_labelled_card_is_still_redacted(tmp_path):
+    src = make_pdf(tmp_path / 'in' / 'card.pdf', [['Card Number: 4111 1111 1111 1111']])
+    out = tmp_path / 'out' / 'card_redacted.pdf'
+    info = run(src, out, (pii.CREDIT_CARD,))
+    assert info['error'] is None
+    assert info['result']['pii'] == {'credit_card': 1}
+    assert '4111 1111 1111 1111' not in pdf_text(out)
+
+
 def test_pdf_without_terms_or_detectors_is_skipped(tmp_path):
     src = make_pdf(tmp_path / 'in' / 'pii.pdf', [PII_LINES])
     out = tmp_path / 'out' / 'pii_redacted.pdf'

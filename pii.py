@@ -72,6 +72,15 @@ _CARD_LABEL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A number introduced directly as an account, invoice, reference or similar
+# identifier is not a payment card, even if it happens to pass the card checks.
+_ACCOUNT_PREFIX_RE = re.compile(
+    r'(?<![A-Za-z])(?:account|acct\.?|invoice|reference|order|policy|member|'
+    r'customer|subscriber|subscription|claim)'
+    r'(?:[\s_-]*(?:number|no\.?|id|#))?[\s_-]*(?:is|are|of)?[\s_-]*[:#-]?[\s_-]*$',
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class Match:
@@ -130,11 +139,16 @@ def _cards(text):
         if not 13 <= len(digits) <= 19:
             continue
         issuer, luhn = _issuer_ok(digits), _luhn(digits)
-        # A checksum failure is not a veto for a grouped number with a known
-        # issuer: a single mistyped digit must still be redacted.
-        if issuer and (luhn or _is_grouped(raw)):
+        card_label = _has_label(text, match.start(), match.end(), _CARD_LABEL_RE)
+        if _has_account_prefix(text, match.start()) and not card_label:
+            continue
+        # A valid checksum and issuer is enough. A failed checksum is tolerated
+        # only for a grouped, known-issuer number that the text calls a card: a
+        # single mistyped digit must still be redacted. Without that label, a
+        # grouped number from a known issuer is too often an account number.
+        if issuer and (luhn or (card_label and _is_grouped(raw))):
             found.append(Match(match.start(), match.end(), CREDIT_CARD))
-        elif luhn and _has_label(text, match.start(), match.end(), _CARD_LABEL_RE):
+        elif luhn and card_label:
             found.append(Match(match.start(), match.end(), CREDIT_CARD))
     return found
 
@@ -226,3 +240,8 @@ def _has_label(text, start, end, pattern, before=48, after=24):
     """Whether a validating label appears just before or after the span."""
     return bool(pattern.search(text[max(0, start - before):start])
                 or pattern.search(text[end:end + after]))
+
+
+def _has_account_prefix(text, start, before=48):
+    """Whether an account-like label directly introduces the span."""
+    return bool(_ACCOUNT_PREFIX_RE.search(text[max(0, start - before):start]))

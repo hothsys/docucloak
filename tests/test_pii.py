@@ -49,8 +49,20 @@ def test_email_detection(text, expected):
     ('Mastercard 5555555555554444', ['5555555555554444']),
     ('Discover 6011111111111117', ['6011111111111117']),
     ('Visa 4222 2222 2222 2', ['4222 2222 2222 2']),
-    # A mistyped digit in a grouped, known-issuer number is still a card
-    ('Number 4111 1111 1111 1112', ['4111 1111 1111 1112']),
+    ('4111 1111 1111 1111', ['4111 1111 1111 1111']),
+    # A failed checksum needs a card label; an account/invoice label is not one.
+    ('Number 4111 1111 1111 1112', []),
+    ('Card 4111 1111 1111 1112', ['4111 1111 1111 1112']),
+    ('Account Number: 4111 1111 1111 1112', []),
+    # A valid number introduced as an account/invoice/reference is not a card.
+    ('Account Number: 4111 1111 1111 1111', []),
+    ('My account number is 4111 1111 1111 1111', []),
+    ('Account 4111111111111111', []),
+    ('Invoice 5555 5555 5555 4444', []),
+    ('Reference 6011 1111 1111 1117', []),
+    # A nearby card label wins over a generic account word.
+    ('Credit card account number 4111 1111 1111 1111', ['4111 1111 1111 1111']),
+    ('Account Number: 4111 1111 1111 1111 Visa', ['4111 1111 1111 1111']),
     # Luhn-valid but not a known issuer: only with a card label
     ('1234 5678 9012 3452', []),
     ('Card 1234 5678 9012 3452', ['1234 5678 9012 3452']),
