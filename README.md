@@ -2,7 +2,7 @@
 
 A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
 
-<img width="1950" height="1626" alt="image" src="https://github.com/user-attachments/assets/65293b53-28f3-4254-bbd3-3901cfb0ec48" />
+<img width="1706" height="1594" alt="image" src="https://github.com/user-attachments/assets/0556343e-ba93-4e77-b9da-378ee41ad9a1" />
 
 ## Features
 
