@@ -33,6 +33,15 @@ function logEvent(payload) {
 // Paths only: the redaction terms are sensitive and never stored or sent to the log.
 const SAVED_FIELD_IDS = ['inputDir', 'outputDir', 'termsFile'];
 
+// Automatic PII detection: the checkbox ids and the stable server-side type ids.
+const PII_FIELD_IDS = ['piiEmail', 'piiCreditCard', 'piiSsn', 'piiPhone'];
+
+function piiKinds() {
+  return PII_FIELD_IDS
+    .filter(id => document.getElementById(id).checked)
+    .map(id => document.getElementById(id).dataset.pii);
+}
+
 function fieldValues() {
   const values = {};
   SAVED_FIELD_IDS.forEach(id => { values[id] = document.getElementById(id).value; });
@@ -47,6 +56,9 @@ function saveFields() {
   localStorage.setItem('dc_inputDir', document.getElementById('inputDir').value);
   localStorage.setItem('dc_outputDir', document.getElementById('outputDir').value);
   localStorage.setItem('dc_termsFile', document.getElementById('termsFile').value);
+  PII_FIELD_IDS.forEach(id => {
+    localStorage.setItem('dc_' + id, document.getElementById(id).checked ? '1' : '0');
+  });
 }
 
 function restoreFields() {
@@ -57,6 +69,10 @@ function restoreFields() {
   if (localStorage.getItem('dc_outputDir') !== null) o.value = localStorage.getItem('dc_outputDir');
   localStorage.removeItem('dc_terms');  // purge terms saved by older versions
   if (localStorage.getItem('dc_termsFile') !== null) f.value = localStorage.getItem('dc_termsFile');
+  PII_FIELD_IDS.forEach(id => {
+    const saved = localStorage.getItem('dc_' + id);
+    if (saved !== null) document.getElementById(id).checked = saved === '1';
+  });
 }
 
 function escapeHtml(text) {

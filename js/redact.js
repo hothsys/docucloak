@@ -24,7 +24,8 @@ async function startRedact() {
     const res = await fetch('/redact', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({input_dir: inputDir, output_dir: outputDir, terms: terms, terms_file_path: termsFilePath})
+      body: JSON.stringify({input_dir: inputDir, output_dir: outputDir, terms: terms,
+                            terms_file_path: termsFilePath, pii_kinds: piiKinds()})
     });
     const data = await readJson(res);
     if (data.error) {
@@ -117,12 +118,36 @@ function describeCurrent(files) {
   return `Now: ${shown.join(', ')}` + (extra ? ` and ${plural(extra, 'more file')}` : '');
 }
 
+const PII_LABELS = {
+  email: 'email address',
+  credit_card: 'credit card number',
+  ssn: 'Social Security number',
+  phone: 'phone number',
+};
+const PII_PLURALS = {email: 'email addresses'};
+
+// {email: 2, ssn: 1} -> "2 email addresses and 1 Social Security number"
+function describePii(pii) {
+  if (!pii) return '';
+  return listJoin(Object.entries(pii)
+    .filter(([, n]) => n)
+    .map(([kind, n]) => n === 1 ? `1 ${PII_LABELS[kind] || kind}` :
+      `${n} ${PII_PLURALS[kind] || (PII_LABELS[kind] || kind) + 's'}`));
+}
+
 function finishedMessage(data) {
   const results = data.results || [];
   const redacted = results.filter(r => r.path).length;
   const skipped = results.filter(r => !r.error && r.result && r.result.skipped).length;
   const needOcr = results.filter(r => r.needs_tesseract);
   const otherFailed = results.filter(r => r.error && !r.needs_tesseract).length;
+  const piiTotals = {};
+  results.forEach(r => {
+    Object.entries((r.result && r.result.pii) || {}).forEach(([kind, n]) => {
+      piiTotals[kind] = (piiTotals[kind] || 0) + n;
+    });
+  });
+  const piiText = describePii(piiTotals);
   // "Done in 12 sec." when the server reported how long the run took
   const took = data.elapsed === null || data.elapsed === undefined ? '' :
     (data.elapsed < 1 ? ' in under 1 sec' : ` in ${formatDuration(data.elapsed)}`);
@@ -131,12 +156,13 @@ function finishedMessage(data) {
   }
   if (data.total === 0) return 'No PDFs or images were found in the input directory.';
   if (redacted === 0 && needOcr.length === 0 && otherFailed === 0) {
-    return `Done${took}. None of the files contain your terms, so no copies were made.`;
+    return `Done${took}. None of the files contain anything to redact, so no copies were made.`;
   }
   const parts = [`${plural(redacted, 'file')} redacted`];
   if (skipped) parts.push(`${skipped} had no matches`);
   if (otherFailed) parts.push(`${otherFailed} couldn't be redacted (see below)`);
   const lines = [`Done${took}. ${listJoin(parts)}.`];
+  if (piiText) lines.push(`Automatically found ${piiText}.`);
   if (needOcr.length) {
     // Spell out the cause: these files need Tesseract
     const pdfs = needOcr.filter(r => /\.pdf$/i.test(r.input)).length;
@@ -194,7 +220,9 @@ function renderResults(results) {
   document.getElementById('results').innerHTML = results.map(r => {
     const skipped = !r.error && r.result && r.result.skipped;
     const cls = r.error ? 'err' : (skipped ? 'skip' : 'ok');
-    const meta = r.error ? r.error : (skipped ? 'No matches, nothing to redact' : 'Saved as ' + baseName(r.path));
+    const pii = describePii(r.result && r.result.pii);
+    const meta = r.error ? r.error : (skipped ? 'No matches, nothing to redact' :
+      'Saved as ' + baseName(r.path) + (pii ? ' · ' + pii : ''));
     const name = r.input ? baseName(r.input) : 'unknown';
     // Redacted files show their copy; skipped or failed files show the original
     const target = r.path || r.input || '';

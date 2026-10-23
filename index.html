@@ -88,13 +88,21 @@
   </div>
 
   <label for="terms">Redaction terms (comma or newline separated)</label>
-  <textarea id="terms" autocomplete="off" placeholder="SSN, credit card, secret phrase, 123-45-6789"></textarea>
+  <textarea id="terms" autocomplete="off" placeholder="Alice Smith, Project Bluebird, internal codename"></textarea>
 
   <label for="termsFile">Redact Terms file (optional)</label>
   <div class="path-row">
     <input id="termsFile" type="text" placeholder="No file selected" />
     <button type="button" id="chooseTermsFile" class="btn-secondary" onclick="pickFile('termsFile')">Choose File</button>
   </div>
+
+  <fieldset class="pii-options">
+    <legend>Also find automatically</legend>
+    <label for="piiEmail"><input type="checkbox" id="piiEmail" data-pii="email" checked /> Email addresses</label>
+    <label for="piiCreditCard"><input type="checkbox" id="piiCreditCard" data-pii="credit_card" checked /> Credit card numbers</label>
+    <label for="piiSsn"><input type="checkbox" id="piiSsn" data-pii="ssn" checked /> Social Security numbers</label>
+    <label for="piiPhone"><input type="checkbox" id="piiPhone" data-pii="phone" /> Phone numbers</label>
+  </fieldset>
 
   <div class="actions">
     <button class="btn-primary" onclick="startRedact()">Start Redaction</button>

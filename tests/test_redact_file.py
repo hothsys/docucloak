@@ -20,7 +20,7 @@ def test_pdf_dispatch_returns_info_dict(sample_pdf, tmp_path):
 @pytest.mark.parametrize('ext', ['.jpg', '.JPEG', '.png', '.tif', '.tiff', '.bmp'])
 def test_image_extensions_dispatch_to_image_redactor(monkeypatch, tmp_path, ext):
     calls = []
-    monkeypatch.setattr(app, '_redact_image', lambda i, t, o, c: calls.append(i) or ({'matches': 0}, None))
+    monkeypatch.setattr(app, '_redact_image', lambda i, t, o, c, *a: calls.append(i) or ({'matches': 0}, None))
     monkeypatch.setattr(app, '_redact_pdf', lambda *a: pytest.fail('pdf redactor called for image'))
     src = tmp_path / f'img{ext}'
     info = app._redact_file(src, tmp_path / f'out{ext}', ['x'], threading.Event())
