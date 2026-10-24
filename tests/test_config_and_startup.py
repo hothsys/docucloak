@@ -63,18 +63,28 @@ def test_ensure_dependencies_noop_when_all_present(monkeypatch):
 def test_ensure_dependencies_installs_only_missing(monkeypatch):
     calls = []
     monkeypatch.setattr(subprocess, 'check_call', lambda cmd, **k: calls.append(cmd))
+    # Patch the requirements to a known set for this test
+    monkeypatch.setattr(dependencies, '_parse_requirements',
+                        lambda: [('pymupdf', 'PyMuPDF==1.28.2'),
+                                 ('PIL', 'Pillow==12.3.0'),
+                                 ('pytesseract', 'pytesseract==0.3.13')])
+    # Make two of them missing
     monkeypatch.setattr(builtins, '__import__', _fake_import({'pytesseract', 'PIL'}))
     dependencies._ensure_dependencies()
     assert len(calls) == 1
     cmd = calls[0]
     assert cmd[:4] == [sys.executable, '-m', 'pip', 'install']
-    assert sorted(cmd[5:]) == ['Pillow>=10.0.0', 'pytesseract>=0.3.10']
+    assert sorted(cmd[5:]) == ['Pillow==12.3.0', 'pytesseract==0.3.13']
 
 
 def test_ensure_dependencies_propagates_pip_failure(monkeypatch):
     def boom(cmd, **k):
         raise subprocess.CalledProcessError(1, cmd)
     monkeypatch.setattr(subprocess, 'check_call', boom)
+    monkeypatch.setattr(dependencies, '_parse_requirements',
+                        lambda: [('pymupdf', 'PyMuPDF==1.28.2'),
+                                 ('PIL', 'Pillow==12.3.0'),
+                                 ('pytesseract', 'pytesseract==0.3.13')])
     monkeypatch.setattr(builtins, '__import__', _fake_import({'pymupdf'}))
     with pytest.raises(subprocess.CalledProcessError):
         dependencies._ensure_dependencies()
