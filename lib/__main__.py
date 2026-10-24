@@ -1,4 +1,4 @@
-"""Run DocuCloak with ``python -m docucloak``."""
+"""Run DocuCloak with ``python -m lib``."""
 
 from .main import main
 

@@ -31,7 +31,7 @@ code_checksum() {
   python3 - "$APP_DIR" <<'PY' | cksum
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
-for path in [root / 'app.py', *sorted((root / 'docucloak').rglob('*.py'))]:
+for path in [root / 'app.py', *sorted((root / 'lib').rglob('*.py'))]:
     sys.stdout.buffer.write(path.read_bytes())
 PY
 }

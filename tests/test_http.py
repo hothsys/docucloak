@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from docucloak import config, jobs, redaction, web
+from lib import config, jobs, redaction, web
 from conftest import REPO_DIR, SAMPLE_LINES, make_pdf, pdf_text, wait_for_job
 
 

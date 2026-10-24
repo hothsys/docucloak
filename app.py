@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Start DocuCloak. The implementation lives in the docucloak package."""
+"""Start DocuCloak. The implementation lives in the lib package."""
 
-from docucloak.main import main
+from lib.main import main
 
 
 if __name__ == '__main__':

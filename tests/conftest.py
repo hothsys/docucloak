@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO_DIR))
 sys.dont_write_bytecode = True  # keep __pycache__ out of the project
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'  # ...in worker processes too
 
-from docucloak import config, jobs, scheduler, tesseract, web  # noqa: E402
+from lib import config, jobs, scheduler, tesseract, web  # noqa: E402
 import pymupdf as fitz  # noqa: E402
 
 # app.py logs to <repo>/server.log on import; keep test runs out of it.

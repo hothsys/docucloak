@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from docucloak import redaction
+from lib import redaction
 from conftest import pdf_text
 
 

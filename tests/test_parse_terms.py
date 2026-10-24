@@ -2,7 +2,7 @@
 
 import pytest
 
-from docucloak.terms import _parse_terms
+from lib.terms import _parse_terms
 
 
 @pytest.mark.parametrize('raw, expected', [

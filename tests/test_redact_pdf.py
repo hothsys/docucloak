@@ -7,9 +7,9 @@ import threading
 import pymupdf as fitz
 import pytest
 
-from docucloak import redaction
+from lib import redaction
 
-from docucloak.redaction import _redact_pdf
+from lib.redaction import _redact_pdf
 from conftest import SAMPLE_LINES, make_pdf, pdf_text
 
 

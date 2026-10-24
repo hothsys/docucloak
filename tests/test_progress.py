@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from docucloak import redaction, scheduler
+from lib import redaction, scheduler
 from conftest import make_pdf, wait_for_job
 
 

@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from docucloak import redaction, tesseract
+from lib import redaction, tesseract
 from conftest import make_pdf
 from test_redact_pdf import scanned_pdf
 from PIL import Image

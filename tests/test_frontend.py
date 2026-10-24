@@ -748,7 +748,7 @@ def test_show_in_finder_error_is_shown(page, tmp_path, sample_pdf):
 
 def test_ui_without_tesseract_end_to_end(browser, server, tmp_path, monkeypatch):
     """A folder of only scanned PDFs and images, no Tesseract: explained, nothing saved, button disabled."""
-    from docucloak import tesseract
+    from lib import tesseract
     from PIL import Image
     from test_redact_pdf import scanned_pdf
     monkeypatch.setattr(tesseract, '_find_tesseract', lambda: None)

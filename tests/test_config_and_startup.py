@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from docucloak import config, dependencies, main, web
+from lib import config, dependencies, main, web
 
 
 # ─── _read_app_config ──────────────────────────────────────────────────────────

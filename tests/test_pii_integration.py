@@ -8,7 +8,7 @@ import pytesseract
 import pytest
 from PIL import Image
 
-from docucloak import pii, redaction
+from lib import pii, redaction
 from conftest import make_pdf, pdf_text
 
 

@@ -2,7 +2,7 @@
 
 import threading
 
-from docucloak import jobs
+from lib import jobs
 
 
 def test_start_job_resets_state_and_returns_fresh_event():

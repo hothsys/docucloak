@@ -12,8 +12,8 @@ import pytest
 import pytesseract
 from PIL import Image, ImageDraw, ImageFont
 
-from docucloak import redaction
-from docucloak.redaction import _redact_image
+from lib import redaction
+from lib.redaction import _redact_image
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)

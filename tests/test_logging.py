@@ -11,7 +11,7 @@ import threading
 
 import pytest
 
-from docucloak import config, jobs, logging_setup, redaction, terms
+from lib import config, jobs, logging_setup, redaction, terms
 from conftest import REPO_DIR, make_pdf, wait_for_job
 
 
@@ -276,7 +276,7 @@ sys.dont_write_bytecode = True
 log = {str(tmp_path / "server.log")!r}
 fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND)   # what server.sh's >> does
 os.dup2(fd, 1); os.dup2(fd, 2)
-from docucloak import config, jobs, logging_setup, redaction, terms
+from lib import config, jobs, logging_setup, redaction, terms
 handler = logging_setup._RotatingLog(log, maxBytes=2000, backupCount=2)
 handler.setFormatter(logging.Formatter('%(message)s'))
 logger = logging.getLogger('rotation-test'); logger.propagate = False; logger.addHandler(handler)

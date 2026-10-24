@@ -11,7 +11,7 @@ import pymupdf as fitz
 import pytest
 from PIL import Image
 
-from docucloak import config, jobs, redaction, scheduler
+from lib import config, jobs, redaction, scheduler
 from conftest import make_pdf, pdf_text, wait_for_job
 from test_redact_pdf import scanned_pdf
 
