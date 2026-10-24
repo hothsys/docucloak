@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO_DIR))
 sys.dont_write_bytecode = True  # keep __pycache__ out of the project
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'  # ...in worker processes too
 
-import app  # noqa: E402
+from docucloak import config, jobs, scheduler, tesseract, web  # noqa: E402
 import pymupdf as fitz  # noqa: E402
 
 # app.py logs to <repo>/server.log on import; keep test runs out of it.
@@ -65,9 +65,9 @@ SAMPLE_LINES = [
 def wait_for_job(timeout=20.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        with app._job_lock:
-            if not app.job_state['running']:
-                return dict(app.job_state)
+        with jobs._job_lock:
+            if not jobs.job_state['running']:
+                return dict(jobs.job_state)
         time.sleep(0.02)
     raise AssertionError('redaction job did not finish in time')
 
@@ -85,22 +85,22 @@ def isolated_app(tmp_path, monkeypatch):
     shutil.copy(REPO_DIR / 'logo.svg', app_dir / 'logo.svg')
     shutil.copytree(REPO_DIR / 'css', app_dir / 'css')
     shutil.copytree(REPO_DIR / 'js', app_dir / 'js')
-    monkeypatch.setattr(app, 'APP_DIR', str(app_dir))
+    monkeypatch.setattr(config, 'APP_DIR', str(app_dir))
     # Run the scheduler on threads so tests can monkeypatch the redaction
     # functions; tests/test_scheduler.py covers the real worker processes.
-    monkeypatch.setattr(app, 'USE_PROCESSES', False)
+    monkeypatch.setattr(scheduler, 'USE_PROCESSES', False)
     # Pretend Tesseract is installed (tests stub OCR); tests of the missing case override this
-    real_find = app._find_tesseract
-    monkeypatch.setattr(app, '_find_tesseract', lambda: real_find() or '/usr/bin/false')
-    with app._job_lock:
-        app.job_state.update(running=False, cancel=None, phase='idle', done=0, total=0, pages_done=0,
-                             pages_total=0, survey=None, cancelled=False, elapsed=None, results=[], errors=[])
+    real_find = tesseract._find_tesseract
+    monkeypatch.setattr(tesseract, '_find_tesseract', lambda: real_find() or '/usr/bin/false')
+    with jobs._job_lock:
+        jobs.job_state.update(running=False, cancel=None, phase='idle', done=0, total=0, pages_done=0,
+                              pages_total=0, survey=None, cancelled=False, elapsed=None, results=[], errors=[])
     yield app_dir
-    app._cancel_job()
+    jobs._cancel_job()
 
 
 def _cancel_and_drain():
-    app._cancel_job()
+    jobs._cancel_job()
     try:
         wait_for_job(timeout=10)
     except AssertionError:
@@ -144,7 +144,7 @@ class Client:
 
 @pytest.fixture
 def server():
-    srv = ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+    srv = ThreadingHTTPServer(('127.0.0.1', 0), web.Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     try:

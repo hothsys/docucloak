@@ -60,7 +60,7 @@ Worker processes stop 2 minutes after the last job to give their memory back, an
 - Python 3.10+
 - [Tesseract](https://github.com/tesseract-ocr/tesseract), needed for images and scanned PDFs: `brew install tesseract`. A badge in the top-right corner of the app shows whether it was found; if not, a help window explains how to install it, and scanned PDFs and images are reported as **error** (never as skipped) while regular PDFs are still redacted. DocuCloak looks on your PATH and in `/opt/homebrew/bin` and `/usr/local/bin`, and checks again each time the page loads, so there's no need to restart after installing
 
-On first run, `app.py` installs PyMuPDF, Pillow and pytesseract if they're missing. To install the exact versions the app is tested with:
+On first run, DocuCloak installs PyMuPDF, Pillow and pytesseract if they're missing. To install the exact versions the app is tested with:
 
 ```bash
 pip install -r requirements.txt
@@ -96,7 +96,7 @@ To change the port, edit `PORT` in `app.conf`.
 2. Enter terms in the text field (comma or newline separated), and/or click **Choose File** to pick a terms file in the same format. Optionally choose what to find under **Also find automatically**.
 3. Click **Start Redaction**, then check the results list: each file shows **redacted** (with its output name and any automatic PII counts), **skipped: no matches**, or **error** with the reason. At least one term or one detector is required.
 
-If no terms are given and a `redact_terms.txt` file exists next to `app.py`, its terms are used instead.
+If no terms are given and a `redact_terms.txt` file exists in the DocuCloak folder, its terms are used instead.
 
 ## Known limitations
 

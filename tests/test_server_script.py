@@ -1,4 +1,4 @@
-"""server.sh: restarting automatically when app.py changed since the server started."""
+"""server.sh: restarting automatically when backend files changed since the server started."""
 
 import os
 import shutil
@@ -22,8 +22,10 @@ def copy(tmp_path):
     """A copy of the app on a free port, with `open` stubbed so no browser window opens."""
     app_dir = tmp_path / 'docucloak'
     app_dir.mkdir()
-    for name in ('app.py', 'pii.py', 'index.html', 'logo.svg', 'server.sh', 'app.conf'):
+    for name in ('app.py', 'index.html', 'logo.svg', 'server.sh', 'app.conf'):
         shutil.copy2(REPO_DIR / name, app_dir / name)
+    shutil.copytree(REPO_DIR / 'docucloak', app_dir / 'docucloak',
+                    ignore=shutil.ignore_patterns('__pycache__'))
     for folder in ('css', 'js'):
         shutil.copytree(REPO_DIR / folder, app_dir / folder)
     conf = (app_dir / 'app.conf').read_text().replace('PORT=5903', f'PORT={free_port()}')
@@ -55,16 +57,16 @@ def test_start_when_running_and_unchanged_does_not_restart(copy):
     assert 'running (PID' in out and pid(app_dir) == first
 
 
-def test_start_restarts_when_app_py_changed_even_with_old_date(copy):
+def test_start_restarts_when_app_module_changed_even_with_old_date(copy):
     """AirDrop and copies keep the old modification date, so the check uses content."""
     app_dir, sh = copy
     sh('start')
     time.sleep(1)
     first = pid(app_dir)
-    app_py = app_dir / 'app.py'
-    stat = app_py.stat()
-    app_py.write_text(app_py.read_text() + '\n# updated\n')
-    os.utime(app_py, (stat.st_atime, stat.st_mtime))  # keep the old date
+    module = app_dir / 'docucloak' / 'main.py'
+    stat = module.stat()
+    module.write_text(module.read_text() + '\n# updated\n')
+    os.utime(module, (stat.st_atime, stat.st_mtime))  # keep the old date
     out = sh('start')
     assert 'was updated since it started; restarting it' in out
     time.sleep(1)
@@ -75,7 +77,7 @@ def test_start_restarts_when_pii_py_changed(copy):
     app_dir, sh = copy
     sh('start')
     time.sleep(1)
-    pii_py = app_dir / 'pii.py'
+    pii_py = app_dir / 'docucloak' / 'pii.py'
     pii_py.write_text(pii_py.read_text() + '\n# updated\n')
     assert 'was updated since it started; restarting it' in sh('start')
 

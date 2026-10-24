@@ -2,7 +2,7 @@
 
 import pytest
 
-import pii
+from docucloak import pii
 
 
 def spans(text, kinds):

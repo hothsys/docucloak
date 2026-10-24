@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-import app
+from docucloak import redaction, scheduler
 from conftest import make_pdf, wait_for_job
 
 
 def progress_with(workers, done=(), running=(), pending=()):
     """done: (kind, estimated, actual); running: (id, kind, cost, file, seconds ago); pending: (id, kind, cost, file)."""
-    p = app._Progress(workers)
+    p = scheduler._Progress(workers)
     for kind, est, act in done:
         totals = p.done.setdefault(kind, [0.0, 0.0])
         totals[0] += est
@@ -99,7 +99,7 @@ def test_final_save_waits_for_a_running_part():
 
 
 def test_lifecycle_start_finish_retry_and_drop():
-    p = app._Progress(2)
+    p = scheduler._Progress(2)
     p.add(1, 'text', 1.0, 'a')
     p.add(2, 'text', 1.0, 'b')
     p.start(1)
@@ -114,7 +114,7 @@ def test_lifecycle_start_finish_retry_and_drop():
 
 
 def test_current_files_lists_running_files_once():
-    p = app._Progress(3)
+    p = scheduler._Progress(3)
     for task_id, file in [(1, Path('/in/a.pdf')), (2, Path('/in/a.pdf')), (3, Path('/in/b.png'))]:
         p.add(task_id, 'text', 1.0, file)
     assert p.current_files() == []
@@ -130,7 +130,7 @@ def test_current_files_lists_running_files_once():
 
 
 def test_elapsed_freezes_when_finished():
-    p = app._Progress(1)
+    p = scheduler._Progress(1)
     p.started -= 5
     p.end()
     first = p.elapsed()
@@ -143,14 +143,14 @@ def test_elapsed_freezes_when_finished():
 def test_status_reports_elapsed_and_remaining_during_a_run(server, tmp_path, monkeypatch):
     for i in range(6):
         make_pdf(tmp_path / 'in' / f'f{i}.pdf', [['Alice Smith']])
-    real = app._redact_file
+    real = redaction._redact_file
 
     def slow(*a):
         time.sleep(0.4)
         return real(*a)
-    monkeypatch.setattr(app, '_redact_file', slow)
-    monkeypatch.setattr(app, 'WORKERS', 2)
-    app._shutdown_pool()
+    monkeypatch.setattr(redaction, '_redact_file', slow)
+    monkeypatch.setattr(scheduler, 'WORKERS', 2)
+    scheduler._shutdown_pool()
     server.post_json('/redact', {'input_dir': str(tmp_path / 'in'), 'output_dir': str(tmp_path / 'out'), 'terms': 'Alice Smith'})
     seen = []
     while True:
@@ -159,7 +159,7 @@ def test_status_reports_elapsed_and_remaining_during_a_run(server, tmp_path, mon
             break
         seen.append((st['elapsed'], st['remaining']))
         time.sleep(0.1)
-    app._shutdown_pool()
+    scheduler._shutdown_pool()
     assert seen and all(e is not None for e, _ in seen)
     estimates = [r for _, r in seen if r is not None]
     assert estimates, 'an estimate appears once two files are done'
@@ -171,14 +171,14 @@ def test_status_reports_the_files_in_progress(server, tmp_path, monkeypatch):
     names = ['alpha.pdf', 'beta.pdf', 'gamma.pdf']
     for name in names:
         make_pdf(tmp_path / 'in' / name, [['Alice Smith']])
-    real = app._redact_file
+    real = redaction._redact_file
 
     def slow(*a):
         time.sleep(0.5)
         return real(*a)
-    monkeypatch.setattr(app, '_redact_file', slow)
-    monkeypatch.setattr(app, 'WORKERS', 3)
-    app._shutdown_pool()
+    monkeypatch.setattr(redaction, '_redact_file', slow)
+    monkeypatch.setattr(scheduler, 'WORKERS', 3)
+    scheduler._shutdown_pool()
     server.post_json('/redact', {'input_dir': str(tmp_path / 'in'), 'output_dir': str(tmp_path / 'out'),
                                  'terms': 'Alice Smith'})
     seen = set()
@@ -188,6 +188,6 @@ def test_status_reports_the_files_in_progress(server, tmp_path, monkeypatch):
             break
         seen.update(st['current'])
         time.sleep(0.05)
-    app._shutdown_pool()
+    scheduler._shutdown_pool()
     assert set(names) <= seen, 'each file showed up while it was being worked on'
     assert st['current'] == [], 'nothing is in progress once the job finishes'

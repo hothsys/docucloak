@@ -12,8 +12,8 @@ import pytest
 import pytesseract
 from PIL import Image, ImageDraw, ImageFont
 
-import app
-from app import _redact_image
+from docucloak import redaction
+from docucloak.redaction import _redact_image
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -171,7 +171,7 @@ def test_cancel_mid_scan_writes_nothing(fake_ocr, white_png, tmp_path):
 def test_missing_pytesseract_returns_error(monkeypatch, white_png, tmp_path):
     monkeypatch.setitem(sys.modules, 'pytesseract', None)
     out = tmp_path / 'out.png'
-    assert run(white_png, ['secret'], out) == (None, app.MSG_NEEDS_TESSERACT)
+    assert run(white_png, ['secret'], out) == (None, redaction.MSG_NEEDS_TESSERACT)
     assert not out.exists()
 
 
@@ -180,14 +180,14 @@ def test_missing_tesseract_binary_is_a_friendly_error(monkeypatch, white_png, tm
         raise pytesseract.TesseractNotFoundError()
     monkeypatch.setattr(pytesseract, 'image_to_data', raise_not_found)
     out = tmp_path / 'out.png'
-    assert run(white_png, ['secret'], out) == (None, app.MSG_NEEDS_TESSERACT)
+    assert run(white_png, ['secret'], out) == (None, redaction.MSG_NEEDS_TESSERACT)
     assert not out.exists()
 
 
 def test_unreadable_image_is_a_friendly_error(fake_ocr, tmp_path):
     bad = tmp_path / 'broken.jpg'
     bad.write_bytes(b'not an image')
-    assert run(bad, ['secret'], tmp_path / 'out.jpg') == (None, app.MSG_UNREADABLE_IMAGE)
+    assert run(bad, ['secret'], tmp_path / 'out.jpg') == (None, redaction.MSG_UNREADABLE_IMAGE)
 
 
 @pytest.mark.skipif(not shutil.which('tesseract'), reason='tesseract binary not installed')

@@ -8,8 +8,7 @@ import pytesseract
 import pytest
 from PIL import Image
 
-import app
-import pii
+from docucloak import pii, redaction
 from conftest import make_pdf, pdf_text
 
 
@@ -24,7 +23,7 @@ SECRETS = ['alice@example.com', '123-45-6789', '4111 1111 1111 1111', '555-123-4
 
 
 def run(src, out, kinds):
-    return app._redact_file(src, out, [], threading.Event(), kinds)
+    return redaction._redact_file(src, out, [], threading.Event(), kinds)
 
 
 # ─── PDFs ─────────────────────────────────────────────────────────────────────
