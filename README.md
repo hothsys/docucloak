@@ -2,8 +2,6 @@
 
 A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
 
-<img width="1706" height="1594" alt="image" src="https://github.com/user-attachments/assets/0556343e-ba93-4e77-b9da-378ee41ad9a1" />
-
 ## Features
 
 - Recursively scans the input directory for `.pdf`, `.jpg`/`.jpeg`, `.png`, `.tif`/`.tiff` and `.bmp` files
@@ -39,6 +37,8 @@ Digit count separates the ambiguous cases: an SSN is 9 digits and a US phone is 
 Counts are occurrences, not unique values: if the same number appears on every page, it is counted each time.
 
 Detection runs on PDF text and on the OCR text from scanned pages and images, so it works the same way as your terms. It is best-effort and US-centric. It does not find names, addresses, dates of birth or account/passport numbers; add those as terms. See the limitations below.
+
+<img width="1706" height="1594" alt="image" src="https://github.com/user-attachments/assets/0556343e-ba93-4e77-b9da-378ee41ad9a1" />
 
 ## Performance
 
