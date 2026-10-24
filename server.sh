@@ -27,8 +27,13 @@ open_browser() {
 
 code_checksum() {
   # Content, not modification time: AirDrop and copies keep the old date.
-  # pii.py is imported at startup, so a change to it also needs a restart.
-  cat "$APP_DIR/app.py" "$APP_DIR/pii.py" | cksum
+  # Include the launcher and every backend module, since all are imported at startup.
+  python3 - "$APP_DIR" <<'PY' | cksum
+import pathlib, sys
+root = pathlib.Path(sys.argv[1])
+for path in [root / 'app.py', *sorted((root / 'lib').rglob('*.py'))]:
+    sys.stdout.buffer.write(path.read_bytes())
+PY
 }
 
 start() {

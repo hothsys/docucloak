@@ -7,9 +7,9 @@ import threading
 import pymupdf as fitz
 import pytest
 
-import app
+from lib import redaction
 
-from app import _redact_pdf
+from lib.redaction import _redact_pdf
 from conftest import SAMPLE_LINES, make_pdf, pdf_text
 
 
@@ -211,7 +211,7 @@ def fake_page_ocr(monkeypatch):
 
     def fake(img, output_type=None, **kw):
         calls.append(img.size)
-        scale = app.OCR_DPI / 72
+        scale = redaction.OCR_DPI / 72
         x, y, w, h = (100 * scale, 200 * scale, 150 * scale, 30 * scale)
         return {'text': ['Alice', 'Smith', 'Balance'], 'left': [x, x + w + 10, x],
                 'top': [y, y, y + 100], 'width': [w, w, w], 'height': [h, h, h],
@@ -247,7 +247,7 @@ def test_scanned_page_without_pytesseract_is_an_error_not_a_skip(tmp_path, monke
     src = scanned_pdf(tmp_path / 'scan.pdf', ['Alice Smith'])
     out = tmp_path / 'out.pdf'
     result, err = run(src, ['Alice Smith'], out)
-    assert result is None and err == app.MSG_NEEDS_TESSERACT
+    assert result is None and err == redaction.MSG_NEEDS_TESSERACT
     assert not out.exists()
 
 

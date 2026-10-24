@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import app
+from lib import config, jobs, redaction, web
 from conftest import REPO_DIR, SAMPLE_LINES, make_pdf, pdf_text, wait_for_job
 
 
@@ -124,7 +124,7 @@ def test_redact_reports_uncreatable_output_dir(server, tmp_path, sample_pdf):
 
 def test_validation_failure_does_not_start_job(server, tmp_path):
     server.post_json('/redact', redact_payload(tmp_path, terms='x', input_dir='/nope'))
-    assert app.job_state['cancel'] is None and app.job_state['running'] is False
+    assert jobs.job_state['cancel'] is None and jobs.job_state['running'] is False
 
 
 # ─── POST /redact: the job ─────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ def test_redact_with_only_file_terms(server, tmp_path, sample_pdf):
 
 
 def test_redact_scans_recursively_and_filters_extensions(server, tmp_path, monkeypatch):
-    monkeypatch.setattr(app, '_redact_image', lambda i, t, o, c, *a: ({'matches': 0}, None))
+    monkeypatch.setattr(redaction, '_redact_image', lambda i, t, o, c, *a: ({'matches': 0}, None))
     inp = tmp_path / 'in'
     make_pdf(inp / 'top.pdf', [SAMPLE_LINES])
     make_pdf(inp / 'a' / 'b' / 'nested.pdf', [SAMPLE_LINES])
@@ -267,7 +267,7 @@ def test_scanned_pdf_without_tesseract_is_reported_as_error(server, tmp_path, mo
 
 
 def test_new_redact_request_cancels_running_job(server, tmp_path, sample_pdf, monkeypatch):
-    real = app._redact_file
+    real = redaction._redact_file
     gate = []
 
     def slow(fp, out, terms, cancel, pii_kinds=()):
@@ -275,7 +275,7 @@ def test_new_redact_request_cancels_running_job(server, tmp_path, sample_pdf, mo
             gate.append(cancel)
             cancel.wait(5)
         return real(fp, out, terms, cancel, pii_kinds)
-    monkeypatch.setattr(app, '_redact_file', slow)
+    monkeypatch.setattr(redaction, '_redact_file', slow)
     server.post_json('/redact', redact_payload(tmp_path, terms='Alice Smith'))
     while not gate:
         time.sleep(0.01)
@@ -367,7 +367,7 @@ def test_unreadable_terms_file_is_rejected(server, tmp_path, sample_pdf, name):
     bad = tmp_path / name if name else tmp_path  # a missing file, or a directory
     status, body = server.post_json('/redact', redact_payload(tmp_path, terms='x', terms_file_path=str(bad)))
     assert status == 400 and body['error'].startswith("The terms file couldn't be read.")
-    assert app.job_state['cancel'] is None
+    assert jobs.job_state['cancel'] is None
 
 
 def test_blank_terms_file_path_is_ignored(server, tmp_path, sample_pdf):
@@ -398,7 +398,7 @@ def test_cancel_stops_running_job(server, tmp_path, monkeypatch):
         started.append(fp)
         cancel.wait(5)
         return {'input': str(fp), 'path': str(out), 'result': None, 'error': 'cancelled'}
-    monkeypatch.setattr(app, '_redact_file', blocking)
+    monkeypatch.setattr(redaction, '_redact_file', blocking)
     server.post_json('/redact', redact_payload(tmp_path, terms='x'))
     while not started:
         time.sleep(0.01)
@@ -431,7 +431,7 @@ def fake_home(tmp_path, monkeypatch):
 ])
 def test_browse_start_dir_for_directories(fake_home, current, expected):
     current = current.format(home=fake_home) if current else current
-    assert app._browse_start_dir(current) == expected.format(home=fake_home)
+    assert web._browse_start_dir(current) == expected.format(home=fake_home)
 
 
 @pytest.mark.parametrize('current, expected', [
@@ -443,7 +443,7 @@ def test_browse_start_dir_for_directories(fake_home, current, expected):
 def test_browse_start_dir_for_terms_file(fake_home, current, expected):
     (fake_home / 'Documents' / 'terms.txt').write_text('x')
     current = current.format(home=fake_home)
-    assert app._browse_start_dir(current, want_file=True) == expected.format(home=fake_home)
+    assert web._browse_start_dir(current, want_file=True) == expected.format(home=fake_home)
 
 
 # ─── In-page file browser (/list_dir) ──────────────────────────────────────────
@@ -522,7 +522,7 @@ def test_unreadable_folder(server, tmp_path):
 
 
 def test_huge_folder_is_capped(server, tmp_path, monkeypatch):
-    monkeypatch.setattr(app, 'BROWSE_MAX_ENTRIES', 5)
+    monkeypatch.setattr(web, 'BROWSE_MAX_ENTRIES', 5)
     box = tmp_path / 'box'
     for i in range(4):
         (box / f'd{i}').mkdir(parents=True)
@@ -554,7 +554,7 @@ def test_unknown_post_returns_404(server):
 def popen_calls(monkeypatch):
     calls = []
     monkeypatch.setattr(subprocess, 'Popen', lambda cmd, **kw: calls.append(cmd))
-    monkeypatch.setattr(app.sys, 'platform', 'darwin')
+    monkeypatch.setattr(web.sys, 'platform', 'darwin')
     return calls
 
 
@@ -578,9 +578,9 @@ def test_reveal_rejects_missing_or_relative_paths(server, popen_calls, path):
 def test_reveal_on_other_platforms(server, sample_pdf, monkeypatch):
     calls = []
     monkeypatch.setattr(subprocess, 'Popen', lambda cmd, **kw: calls.append(cmd))
-    monkeypatch.setattr(app.sys, 'platform', 'win32')
+    monkeypatch.setattr(web.sys, 'platform', 'win32')
     server.post_json('/reveal', {'path': str(sample_pdf)})
-    monkeypatch.setattr(app.sys, 'platform', 'linux')
+    monkeypatch.setattr(web.sys, 'platform', 'linux')
     server.post_json('/reveal', {'path': str(sample_pdf)})
     assert calls == [['explorer', '/select,', str(sample_pdf)], ['xdg-open', str(sample_pdf.parent)]]
 
@@ -592,17 +592,17 @@ def test_version_reports_current_code(server):
 
 
 def test_version_reports_outdated_when_app_py_changed(server, monkeypatch):
-    monkeypatch.setattr(app, '_code_fingerprint', lambda: 'a different hash')
+    monkeypatch.setattr(config, '_code_fingerprint', lambda: 'a different hash')
     assert server.get('/version')[2] == b'{"outdated": true}'
 
 
 def test_fingerprint_is_content_based(tmp_path, monkeypatch):
     fake = tmp_path / 'app.py'
     fake.write_text('one')
-    monkeypatch.setattr(app, '__file__', str(fake))
-    first = app._code_fingerprint()
+    monkeypatch.setattr(config, '__file__', str(fake))
+    first = config._code_fingerprint()
     fake.write_text('two')
-    assert app._code_fingerprint() != first
+    assert config._code_fingerprint() != first
 
 
 def test_fingerprint_includes_pii_module(tmp_path, monkeypatch):
@@ -610,10 +610,10 @@ def test_fingerprint_includes_pii_module(tmp_path, monkeypatch):
     pii_module = tmp_path / 'pii.py'
     fake.write_text('one')
     pii_module.write_text('one')
-    monkeypatch.setattr(app, '__file__', str(fake))
-    first = app._code_fingerprint()
+    monkeypatch.setattr(config, '__file__', str(fake))
+    first = config._code_fingerprint()
     pii_module.write_text('two')
-    assert app._code_fingerprint() != first
+    assert config._code_fingerprint() != first
 
 
 # ─── Static assets: css/ and js/ ───────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 import pytest
 
-import pii
+from lib import pii
 
 
 def spans(text, kinds):

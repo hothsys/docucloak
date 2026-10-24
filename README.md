@@ -11,7 +11,7 @@ A web app that runs on your Mac and redacts PDFs and images. Point it at an inpu
 - **Hidden PDF content:** every redacted PDF copy has its document properties (title, author and so on, including XMP metadata) and bookmarks removed, and is rewritten so removed content can't be recovered from the file. A term or detected value found only in those places still produces a cleaned copy
 - Case-insensitive matching; a term also matches inside longer words (`secret` matches `secret123`). Multi-word terms like `Alice Smith` work in PDFs, scans and images
 - Terms come from a text field, a terms file, or both. The terms file is re-read from disk on every run, so you can edit it and run again
-- **Automatic PII detection (optional):** find email addresses, credit card numbers, US Social Security numbers and US phone numbers without listing each value. Email, cards and SSNs are on by default; phone detection is off because plain 10-digit numbers are ambiguous. Detected values use the same search-and-redact path as your terms, and only per-type counts are shown or logged—never the values themselves
+- **Automatic PII detection (optional):** find email addresses, credit card numbers, US Social Security numbers and US phone numbers without listing each value. Email, cards and SSNs are on by default; phone detection is off because plain 10-digit numbers are ambiguous. Detected values use the same search-and-redact path as your terms, and only per-type counts are shown or logged-never the values themselves
 - Copies are written as `<name>_redacted.<ext>` in the output directory, in the same subfolders as in the input directory (so same-named files in different folders never collide). The output directory is created if it doesn't exist
 - Files with no matches are skipped: no copy is written. If a file no longer matches after you change the terms, its old `_redacted` copy is deleted, so the output directory always reflects the latest terms
 - Live progress: which file(s) are being redacted right now, what was found (PDFs, scanned PDFs, images), how many files are done, elapsed time and an estimate of the time left, a progress bar, and each file's result in plain language. Cancel stops the current job
@@ -28,9 +28,9 @@ The **Also find automatically** row adds these detectors to a run. Use them with
 | Type | What it accepts | Default |
 | --- | --- | --- |
 | Email address | `name@example.com`, including `+` tags and subdomains | On |
-| Credit card number | 13–19 digits, with or without spaces or hyphens. Requires a Luhn checksum and a major issuer prefix (or a nearby card label). A grouped number with a known issuer is accepted despite a failed checksum only when a card label is nearby. A number introduced as an account, invoice, reference or similar identifier is not treated as a card | On |
+| Credit card number | 13-19 digits, with or without spaces or hyphens. Requires a Luhn checksum and a major issuer prefix (or a nearby card label). A grouped number with a known issuer is accepted despite a failed checksum only when a card label is nearby. A number introduced as an account, invoice, reference or similar identifier is not treated as a card | On |
 | US Social Security number | The `123-45-6789` (or space-separated) shape. A bare 9-digit number is only treated as an SSN when `SSN`, `Social Security` or `Taxpayer ID` appears next to it and the SSA range rules pass | On |
-| US phone number | 10 digits, with optional `1`/`+1`, parentheses, dots, spaces or hyphens, and an optional extension. The area code must start with 2–9 | Off |
+| US phone number | 10 digits, with optional `1`/`+1`, parentheses, dots, spaces or hyphens, and an optional extension. The area code must start with 2-9 | Off |
 
 Digit count separates the ambiguous cases: an SSN is 9 digits and a US phone is 10, so a hyphenless `123456789` is never treated as a phone, while a hyphenless `5551234567` is checked only when phone detection is on.
 
@@ -60,7 +60,7 @@ Worker processes stop 2 minutes after the last job to give their memory back, an
 - Python 3.10+
 - [Tesseract](https://github.com/tesseract-ocr/tesseract), needed for images and scanned PDFs: `brew install tesseract`. A badge in the top-right corner of the app shows whether it was found; if not, a help window explains how to install it, and scanned PDFs and images are reported as **error** (never as skipped) while regular PDFs are still redacted. DocuCloak looks on your PATH and in `/opt/homebrew/bin` and `/usr/local/bin`, and checks again each time the page loads, so there's no need to restart after installing
 
-On first run, `app.py` installs PyMuPDF, Pillow and pytesseract if they're missing. To install the exact versions the app is tested with:
+On first run, DocuCloak installs PyMuPDF, Pillow and pytesseract if they're missing. To install the exact versions the app is tested with:
 
 ```bash
 pip install -r requirements.txt
@@ -96,14 +96,14 @@ To change the port, edit `PORT` in `app.conf`.
 2. Enter terms in the text field (comma or newline separated), and/or click **Choose File** to pick a terms file in the same format. Optionally choose what to find under **Also find automatically**.
 3. Click **Start Redaction**, then check the results list: each file shows **redacted** (with its output name and any automatic PII counts), **skipped: no matches**, or **error** with the reason. At least one term or one detector is required.
 
-If no terms are given and a `redact_terms.txt` file exists next to `app.py`, its terms are used instead.
+If no terms are given and a `redact_terms.txt` file exists in the DocuCloak folder, its terms are used instead.
 
 ## Known limitations
 
 Check redacted output before sharing it.
 
 - **Automatic detection is best-effort.** It is tuned for high precision, but no detector is perfect and it only knows the formats described above. Review the redacted copy.
-- **Account, invoice and reference numbers are not cards.** A number introduced by one of those labels is left for your terms even when it is 13–19 digits, unless a card label such as `Card` or `Visa` is next to it.
+- **Account, invoice and reference numbers are not cards.** A number introduced by one of those labels is left for your terms even when it is 13-19 digits, unless a card label such as `Card` or `Visa` is next to it.
 - **A few unlabelled account numbers can still look like cards.** If a card-shaped number has no account label and happens to pass the card checksum, it can be detected. Check the counts if your documents contain many long account numbers.
 - **Phone detection is noisy.** Any 10-digit number (an order, account or ticket number) can look like a US phone. Leave it off unless your documents contain phone numbers.
 - **Bare 9-digit SSNs need a label.** Without `SSN`, `Social Security` or `Taxpayer ID` nearby, a 9-digit number is left alone because ZIP+4s, EINs and invoice numbers share its shape. Separated SSNs are redacted by shape.

@@ -11,7 +11,7 @@ import threading
 
 import pytest
 
-import app
+from lib import config, jobs, logging_setup, redaction, terms
 from conftest import REPO_DIR, make_pdf, wait_for_job
 
 
@@ -35,12 +35,12 @@ def payload(tmp_path, **kw):
 # ─── Log configuration ─────────────────────────────────────────────────────────
 
 def test_log_lines_include_thread_name():
-    assert all('[%(threadName)s]' in h.formatter._fmt for h in app._log_handlers)
+    assert all('[%(threadName)s]' in h.formatter._fmt for h in logging_setup._log_handlers)
 
 
 def test_no_stdout_echo_when_not_a_terminal():
     # server.sh already sends stdout to server.log; echoing would duplicate lines.
-    assert not any(type(h) is logging.StreamHandler for h in app._log_handlers)
+    assert not any(type(h) is logging.StreamHandler for h in logging_setup._log_handlers)
 
 
 def test_pil_debug_noise_suppressed():
@@ -161,16 +161,16 @@ def test_unexpected_task_exception_is_logged_with_traceback(server, tmp_path, lo
 
     def boom(*a):
         raise RuntimeError('library blew up')
-    monkeypatch.setattr(app, '_redact_file', boom)
+    monkeypatch.setattr(redaction, '_redact_file', boom)
     _, state = server.redact_and_wait(payload(tmp_path, terms='x'))
-    assert state['results'][0]['error'] == app.MSG_UNEXPECTED, 'the user sees a friendly message'
+    assert state['results'][0]['error'] == redaction.MSG_UNEXPECTED, 'the user sees a friendly message'
     assert any('library blew up' in r.getMessage() for r in log.records), 'the log keeps the detail'
     assert any('Redaction error for' in r.getMessage() and r.exc_info for r in log.records)
 
 
 def test_new_job_while_running_logs_cancellation(log):
-    app._start_job()
-    app._start_job()
+    jobs._start_job()
+    jobs._start_job()
     assert 'Cancelling the previous redaction job, which is still running' in messages(log)
 
 
@@ -237,13 +237,13 @@ def test_page_request_is_logged(server, log):
 # ─── Internal functions ────────────────────────────────────────────────────────
 
 def test_internal_functions_log_at_debug(log, isolated_app):
-    app._parse_terms('a, b')
-    app._read_app_config()
-    cancel = app._start_job()
-    app._update_job(1)
-    app._cancel_job()
-    app._finish_job(cancel)
-    app._finish_job(threading.Event())
+    terms._parse_terms('a, b')
+    config._read_app_config()
+    cancel = jobs._start_job()
+    jobs._update_job(1)
+    jobs._cancel_job()
+    jobs._finish_job(cancel)
+    jobs._finish_job(threading.Event())
     debug = messages(log, logging.DEBUG)
     assert 'Parsed 2 term(s) from 4 characters of text' in debug
     assert any(m.startswith('No app config loaded from') for m in debug)
@@ -257,7 +257,7 @@ def test_internal_functions_log_at_debug(log, isolated_app):
 # ─── Log rotation ──────────────────────────────────────────────────────────────
 
 def test_log_rotates_at_5mb_keeping_3_old_files():
-    [handler] = app._log_handlers
+    [handler] = logging_setup._log_handlers
     assert isinstance(handler, logging.handlers.RotatingFileHandler)
     assert handler.baseFilename.endswith('/server.log')
     assert (handler.maxBytes, handler.backupCount) == (5 * 1024 * 1024, 3)
@@ -276,8 +276,8 @@ sys.dont_write_bytecode = True
 log = {str(tmp_path / "server.log")!r}
 fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND)   # what server.sh's >> does
 os.dup2(fd, 1); os.dup2(fd, 2)
-import app
-handler = app._RotatingLog(log, maxBytes=2000, backupCount=2)
+from lib import config, jobs, logging_setup, redaction, terms
+handler = logging_setup._RotatingLog(log, maxBytes=2000, backupCount=2)
 handler.setFormatter(logging.Formatter('%(message)s'))
 logger = logging.getLogger('rotation-test'); logger.propagate = False; logger.addHandler(handler)
 for i in range(100):
