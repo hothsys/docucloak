@@ -114,23 +114,6 @@ Check redacted output before sharing it.
 - **Other hidden PDF content is not searched.** Comments and other annotations, form field values and file attachments are not checked for terms.
 - **Password-protected PDFs are not redacted.** They are reported as errors; remove the password first.
 
-## Project layout
-
-```
-app.py              server and redaction engine
-pii.py              automatic PII detectors (email, cards, SSNs, phones)
-index.html          browser UI (markup only)
-css/styles.css      styles
-js/                 browser code: core.js (shared helpers), tesseract.js, browser.js (file browser),
-                    redact.js (start, progress, results), main.js (start-up)
-logo.svg            app logo
-app.conf            app name, title, port and (optional) number of workers
-server.sh           start / stop / restart / status / logs
-docucloak.command   Finder launcher
-requirements.txt    pinned dependencies (kept up to date by .github/dependabot.yml)
-.github/workflows/  pr-summary.yml: posts an AI-written summary on each pull request
-tests/              test suite
-```
 
 ## Tests
 
