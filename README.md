@@ -38,7 +38,11 @@ Counts are occurrences, not unique values: if the same number appears on every p
 
 Detection runs on PDF text and on the OCR text from scanned pages and images, so it works the same way as your terms. It is best-effort and US-centric. It does not find names, addresses, dates of birth or account/passport numbers; add those as terms. See the limitations below.
 
+---
+
 <img width="1706" height="1594" alt="image" src="https://github.com/user-attachments/assets/0556343e-ba93-4e77-b9da-378ee41ad9a1" />
+
+---
 
 ## Performance
 
