@@ -1,6 +1,12 @@
-# <img src="logo.svg" width="97" height="112" align="absmiddle" />&nbsp;&nbsp;DocuCloak
+<p align="center">
+  <img src="logo.svg" alt="Delta logo" width="220">
+</p>
 
-A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
+<h1 align="center">DocuCloak</h1>
+
+<p align="center">
+  A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
+</p>
 
 ## Features
 
