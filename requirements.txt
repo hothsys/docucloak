@@ -2,7 +2,7 @@
 # app.py auto-installs missing packages using its own minimum versions.
 
 # Required
-PyMuPDF==2.0
+PyMuPDF==2.1
 Pillow==13.0.0
 
 # Image OCR redaction (also needs the Tesseract binary: brew install tesseract)
