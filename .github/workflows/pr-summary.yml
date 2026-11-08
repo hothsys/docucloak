@@ -1,8 +1,6 @@
 name: PR Summary
 on:
-  # pull_request (not pull_request_target): GitHub blocks pull_request_target on public
-  # repositories by default from November 2, 2026, and recommends pull_request instead
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
@@ -11,9 +9,6 @@ on:
         required: true
 jobs:
   summary:
-    # PRs from forks get no secrets and a read-only token under pull_request, so they
-    # couldn't comment anyway: skip them instead of failing
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
