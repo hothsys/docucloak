@@ -179,8 +179,8 @@ def _survey_file(path: Path, n_terms: int) -> dict:
                 if doc.needs_pass:
                     return {**info, 'kind': 'protected PDF', 'error': redaction.MSG_PROTECTED, 'cost': 0}
                 pages = len(doc)
-                # No fonts but images: no text layer, so the page will need OCR
-                scan_pages = [p.number for p in doc if not p.get_fonts() and p.get_images()]
+                # Same test the redaction uses: no text layer, or an unreadable one
+                scan_pages = [p.number for p in doc if redaction._page_needs_ocr(p)]
         except Exception as e:
             logger.warning('Cannot open PDF %s: %s', path, e)
             return {**info, 'kind': 'unreadable PDF', 'error': redaction.MSG_UNREADABLE_PDF, 'cost': 0}

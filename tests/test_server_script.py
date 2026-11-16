@@ -97,3 +97,58 @@ def test_stop_removes_runtime_files(copy):
     time.sleep(1)
     sh('stop')
     assert not any((app_dir / f).exists() for f in ('.server.pid', '.server.port', '.server.code'))
+
+
+# ─── Opening the browser only when the server is ready ─────────────────────────
+
+def configured_port(app_dir):
+    return int(next(line.split('=', 1)[1] for line in (app_dir / 'app.conf').read_text().splitlines()
+                    if line.startswith('PORT=')))
+
+
+def record_browser_opening(app_dir):
+    """Replace the stubbed `open` with one that records whether the page answered at that moment."""
+    log = app_dir.parent / 'browser.log'
+    stub = app_dir.parent / 'bin' / 'open'
+    stub.write_text(f'#!/bin/sh\nif curl --noproxy "*" -s -o /dev/null -m 2 "$1"; then echo ready >> {log}; '
+                    f'else echo unreachable >> {log}; fi\n')
+    return log
+
+
+def test_browser_opens_only_after_a_slow_start_is_ready(copy):
+    """Restarting showed "can't be reached" for a few seconds: the wait loop's port check was
+    inverted, so it opened the browser before the server was listening."""
+    app_dir, sh = copy
+    app_py = app_dir / 'app.py'
+    app_py.write_text('import time; time.sleep(2.5)  # a slow start, like a cold restart\n' + app_py.read_text())
+    log = record_browser_opening(app_dir)
+    out = sh('start')
+    assert 'started at' in out
+    assert log.read_text().split() == ['ready']
+
+
+def test_start_refuses_a_port_held_by_another_program(copy):
+    app_dir, sh = copy
+    holder = socket.socket()
+    holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    holder.bind(('127.0.0.1', configured_port(app_dir)))
+    holder.listen()
+    log = record_browser_opening(app_dir)
+    try:
+        out = sh('start')
+    finally:
+        holder.close()
+    assert 'already in use by another program' in out
+    assert not log.exists(), 'no browser for a server that never started'
+    assert not any((app_dir / f).exists() for f in ('.server.pid', '.server.port', '.server.code'))
+
+
+def test_start_reports_a_server_that_crashes(copy):
+    app_dir, sh = copy
+    app_py = app_dir / 'app.py'
+    app_py.write_text('raise SystemExit("broken")\n' + app_py.read_text())
+    log = record_browser_opening(app_dir)
+    out = sh('start')
+    assert 'failed to start' in out and 'server.log' in out
+    assert not log.exists()
+    assert not any((app_dir / f).exists() for f in ('.server.pid', '.server.port', '.server.code'))

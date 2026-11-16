@@ -1,5 +1,6 @@
 """Search and redact PDFs and images, including scanned pages handled by OCR."""
 
+import unicodedata
 from pathlib import Path
 
 from . import pii, tesseract
@@ -26,6 +27,77 @@ MSG_NEEDS_TESSERACT = 'Reading text in scanned pages and images needs Tesseract.
 MSG_OCR_TIMEOUT = 'Reading the text in this file took too long, so it was stopped.'
 MSG_CRASHED = "This file couldn't be processed. It may be damaged."
 MSG_UNEXPECTED = 'Something went wrong with this file. Details are in the server log.'
+
+def _fit_box_to_ink(gray, box, text):
+    """Correct an OCR word box against the glyphs actually drawn on the image.
+
+    Tesseract's word boxes are estimates and can leave out a character: with a
+    repeated narrow glyph ("11530") it placed the first "1" on top of the second,
+    and the redaction left the first digit visible. Count the glyphs (runs of
+    dark columns) inside the box; if there are fewer than the characters
+    Tesseract read, take in the nearest glyphs just outside it (at most about
+    half an em away, and at most two). Then add a small margin for anti-aliased edges. Erring
+    toward a little extra black is the safe direction for redaction.
+    Returns (x, y, w, h) in image pixels.
+    """
+    x, y, w, h = (int(round(v)) for v in box)
+    if h > w and len(''.join(text.split())) > 1:
+        # Vertical text (for example a page rotated 90°): measure along the
+        # word's own direction by working on the image flipped on its diagonal
+        from PIL import Image
+        fx, fy, fw, fh = _fit_box_to_ink(gray.transpose(Image.Transpose.TRANSPOSE), (y, x, h, w), text)
+        return (fy, fx, fh, fw)
+    # How far a missing glyph may sit outside the box: about half an em (letters in
+    # a word are closer than that), and capitals/digits are about 0.7 em tall
+    reach = max(2, int(0.7 * h))
+    slack = max(1, int(0.25 * h))       # Tesseract's top/bottom are estimates too
+    # Look a full glyph beyond the gap allowance, so a glyph near the edge is measured whole
+    left, right = max(0, x - reach - h), min(gray.width, x + w + reach + h)
+    top, bottom = max(0, y - slack), min(gray.height, y + h + slack)
+    margin = max(1, round(0.08 * h))
+    if right > left and bottom > top:
+        width, rows = right - left, bottom - top
+        pixels = list(gray.crop((left, top, right, bottom)).getdata())
+        background = sorted(pixels)[len(pixels) // 2]
+        limit = min(160, background - 60)
+        dark = [any(pixels[r * width + c] < limit for r in range(rows)) for c in range(width)]
+        runs, start = [], None
+        for c, is_dark in enumerate(dark + [False]):
+            if is_dark and start is None:
+                start = c
+            elif not is_dark and start is not None:
+                runs.append((left + start, left + c - 1))
+                start = None
+        x0, x1 = x, x + w
+        inside = [r for r in runs if r[1] >= x0 and r[0] < x1]
+        before = [r for r in runs if r[1] < x0]   # nearest is last
+        after = [r for r in runs if r[0] >= x1]   # nearest is first
+        # At most 2 glyphs: enough for a misplaced character, and touching letters
+        # (which look like fewer glyphs) can't make the box spread along the line
+        missing = min(2, len(''.join(text.split())) - len(inside))
+        while missing > 0:
+            options = []
+            if before and x0 - before[-1][1] <= reach:
+                options.append((x0 - before[-1][1], 'before'))
+            if after and after[0][0] - x1 <= reach:
+                options.append((after[0][0] - x1, 'after'))
+            if not options:
+                break
+            if min(options)[1] == 'before':
+                x0 = before.pop()[0]
+            else:
+                x1 = after.pop(0)[1] + 1
+            missing -= 1
+        # Cover the full extent of the glyphs now inside the box, never shrinking it
+        for r0, r1 in [r for r in runs if r[1] >= x0 and r[0] < x1]:
+            x0, x1 = min(x0, r0), max(x1, r1 + 1)
+        ink_rows = [r for r in range(rows)
+                    if any(pixels[r * width + c] < limit for c in range(max(0, x0 - left), min(width, x1 - left)))]
+        y0, y1 = y, y + h
+        if ink_rows:
+            y0, y1 = min(y0, top + ink_rows[0]), max(y1, top + ink_rows[-1] + 1)
+        x, y, w, h = x0, y0, x1 - x0, y1 - y0
+    return (x - margin, y - margin, w + 2 * margin, h + 2 * margin)
 
 def _ocr_matches(img, terms: list[str], cancel_event, pii_kinds=()):
     """OCR a PIL image and find every term and PII occurrence.
@@ -58,6 +130,20 @@ def _ocr_matches(img, terms: list[str], cancel_event, pii_kinds=()):
             lines.setdefault(key, []).append(i)
     found = []
     pii_counts = {}
+    fitted, grayscale = {}, []
+
+    def word_box(i):
+        """The word's box, corrected against the drawn glyphs (computed once per word)."""
+        if i not in fitted:
+            box = (data['left'][i], data['top'][i], data['width'][i], data['height'][i])
+            if box[2] <= 0 or box[3] <= 0:
+                fitted[i] = None
+            else:
+                if not grayscale:
+                    grayscale.append(img.convert('L'))
+                fitted[i] = _fit_box_to_ink(grayscale[0], box, data['text'][i])
+        return fitted[i]
+
     for word_indexes in lines.values():
         if cancel_event.is_set():
             return None
@@ -75,9 +161,8 @@ def _ocr_matches(img, terms: list[str], cancel_event, pii_kinds=()):
             pos = lower.find(needle)
             while pos != -1:
                 stop = pos + len(needle)
-                boxes = [(data['left'][i], data['top'][i], data['width'][i], data['height'][i])
-                         for s, e, i in spans if s < stop and e > pos]
-                boxes = [b for b in boxes if b[2] > 0 and b[3] > 0]
+                boxes = [word_box(i) for s, e, i in spans if s < stop and e > pos]
+                boxes = [b for b in boxes if b]
                 if boxes:
                     found.append((('term', term_no), boxes))
                     covered.add((pos, stop))
@@ -85,9 +170,8 @@ def _ocr_matches(img, terms: list[str], cancel_event, pii_kinds=()):
         for match in pii.find_pii(line, pii_kinds):
             if (match.start, match.end) in covered:
                 continue  # the user already listed this exact value
-            boxes = [(data['left'][i], data['top'][i], data['width'][i], data['height'][i])
-                     for s, e, i in spans if s < match.end and e > match.start]
-            boxes = [b for b in boxes if b[2] > 0 and b[3] > 0]
+            boxes = [word_box(i) for s, e, i in spans if s < match.end and e > match.start]
+            boxes = [b for b in boxes if b]
             if boxes:
                 found.append((('pii', match.kind), boxes))
                 pii_counts[match.kind] = pii_counts.get(match.kind, 0) + 1
@@ -110,6 +194,33 @@ def _hidden_matches(doc, terms: list[str], pii_kinds=()):
             pii_counts[match.kind] = pii_counts.get(match.kind, 0) + 1
     return matches, pii_counts
 
+UNREADABLE_TEXT_SHARE = 0.02  # above this share of unmapped characters, a page's text layer is gibberish
+
+def _text_layer_unreadable(text):
+    """True if extracted text is mostly not real characters.
+
+    Some PDFs embed fonts without a character map: the page shows normal text,
+    but extraction returns control codes, so searching (and PII detection) can
+    never match, and Preview can't select the text. Such pages must be OCR'd
+    like scans, or the file is reported "no matches" with everything visible.
+    """
+    chars = [c for c in text if not c.isspace()]
+    if not chars:
+        return False
+    bad = sum(1 for c in chars if c == '\ufffd' or unicodedata.category(c) in ('Cc', 'Co', 'Cn', 'Cs'))
+    return bad / len(chars) > UNREADABLE_TEXT_SHARE
+
+def _page_needs_ocr(page, text=None):
+    """Whether a page's words can only be found by reading its rendered image:
+    no text layer (a scan, or text turned into outlines) or an unreadable one.
+    Blank pages (nothing drawn at all) are skipped. Shared by the survey and the
+    redaction so they always agree."""
+    if text is None:
+        text = page.get_text()
+    if text.strip():
+        return _text_layer_unreadable(text)
+    return bool(page.get_images() or page.get_drawings())
+
 def _open_pdf(path):
     doc = fitz.open(str(path))
     if doc.needs_pass:
@@ -120,7 +231,8 @@ def _open_pdf(path):
 def _analyze_pages(doc, page_numbers, terms: list[str], cancel_event, label: str, pii_kinds=()):
     """Find everything to redact on the given pages, without changing the document.
 
-    Pages without a text layer but with images are scanned pages and are OCR'd.
+    Pages whose words can't be found in the text layer (scans, outlined text,
+    unreadable text layers; see _page_needs_ocr) are OCR'd.
     Returns ({page_number: [(x0, y0, x1, y1), ...]}, matches, ocr_pages,
     pii_counts) with rects in page coordinates, or None if cancelled.
     """
@@ -158,14 +270,15 @@ def _analyze_pages(doc, page_numbers, terms: list[str], cancel_event, label: str
                 pii_counts[kind] = pii_counts.get(kind, 0) + len(found)
             rects.extend(tuple(r) for r in found)
             matches += len(found)
-        if not page_text.strip() and page.get_images():
+        if _page_needs_ocr(page, page_text):
             try:
                 import pytesseract  # noqa: F401
             except ImportError:
                 logger.error('%s page %d is scanned and needs OCR, but pytesseract is not installed', label, pno + 1)
                 raise RedactionError(MSG_NEEDS_TESSERACT)
             ocr_pages += 1
-            logger.debug('%s page %d has no text layer; running OCR', label, pno + 1)
+            logger.debug('%s page %d has %s; running OCR', label, pno + 1,
+                         'an unreadable text layer' if page_text.strip() else 'no text layer')
             pix = page.get_pixmap(dpi=OCR_DPI)
             ocr_result = _ocr_matches(Image.frombytes('RGB', (pix.width, pix.height), pix.samples),
                                       terms, cancel_event, pii_kinds)
