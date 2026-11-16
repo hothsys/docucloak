@@ -303,3 +303,91 @@ def test_real_ocr_scanned_image_pixels_are_removed_not_covered(tmp_path):
     for data in images:
         text = pytesseract.image_to_string(Image.open(io.BytesIO(data)))
         assert 'Alice' not in text and 'Smith' not in text
+
+
+# ─── Unreadable text layers (fonts without a character map) ────────────────────
+# Real case: a statement whose fonts were embedded without a character map. The
+# page shows normal text, but extraction returns control codes, so search found
+# nothing and the file was reported "no matches" with every term still visible.
+
+def unreadable_text_pdf(path, lines):
+    """Text drawn with a real font whose character map (ToUnicode) is removed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_font(fontname='F0', fontbuffer=fitz.Font('cjk').buffer)
+    for i, line in enumerate(lines):
+        page.insert_text((72, 100 + 40 * i), line, fontname='F0', fontsize=18)
+    for xref in range(1, doc.xref_length()):
+        if doc.xref_get_key(xref, 'ToUnicode')[0] != 'null':
+            doc.xref_set_key(xref, 'ToUnicode', 'null')
+    doc.save(str(path))
+    return path
+
+
+@pytest.mark.parametrize('text, unreadable', [
+    ('Statement for Alice Smith, balance 42.00', False),
+    ('', False),
+    ('   \n\t ', False),
+    ('\x01\x02\x03\x04 abc', True),                       # mostly control codes
+    ('��� ok', True),                      # replacement characters
+    ('a' * 99 + '\x01', False),                           # 1% is tolerated
+    ('Résumé — naïve café 東京 ­', False),  # accents, CJK, soft hyphen are real text
+])
+def test_text_layer_unreadable(text, unreadable):
+    assert redaction._text_layer_unreadable(text) is unreadable
+
+
+def test_which_pages_need_ocr(tmp_path):
+    good = fitz.open(str(make_pdf(tmp_path / 'good.pdf', [['Alice Smith']])))[0]
+    assert redaction._page_needs_ocr(good) is False
+    garbled = fitz.open(str(unreadable_text_pdf(tmp_path / 'bad.pdf', ['Alice Smith'])))[0]
+    assert redaction._page_needs_ocr(garbled) is True
+    scan = fitz.open(str(scanned_pdf(tmp_path / 'scan.pdf', ['Alice Smith'])))[0]
+    assert redaction._page_needs_ocr(scan) is True
+    doc = fitz.open()
+    blank = doc.new_page()
+    assert redaction._page_needs_ocr(blank) is False, 'nothing drawn: no OCR needed'
+    outlines = doc.new_page()
+    outlines.draw_rect(fitz.Rect(72, 72, 300, 100), fill=(0, 0, 0))  # e.g. text converted to outlines
+    assert redaction._page_needs_ocr(outlines) is True
+
+
+def test_unreadable_text_pdf_is_surveyed_as_needing_ocr(tmp_path):
+    from lib import scheduler
+    sv = scheduler._survey_file(unreadable_text_pdf(tmp_path / 'bad.pdf', ['Alice Smith']), 5)
+    assert sv['kind'] == 'scanned PDF' and sv['scan_pages'] == [0]
+
+
+def test_unreadable_text_page_is_ocrd(tmp_path, fake_page_ocr):
+    src = unreadable_text_pdf(tmp_path / 'bad.pdf', ['x'])
+    out = tmp_path / 'out.pdf'
+    result, err = run(src, ['Alice Smith'], out)
+    assert err is None and result == {'matches': 1, 'pages': 1, 'ocr_pages': 1}
+    assert len(fake_page_ocr) == 1
+    assert dark_fraction(out, fitz.Rect(105, 205, 245, 225)) > 0.9
+
+
+@needs_tesseract
+def test_real_ocr_redacts_text_with_no_character_map(tmp_path):
+    src = unreadable_text_pdf(tmp_path / 'bad.pdf', ['Statement for Alice Smith', 'Account 123-45-6789 balance due'])
+    assert not fitz.open(str(src))[0].search_for('Alice Smith'), 'sanity check: text search is blind here'
+    assert 'Alice Smith' in ocr_pdf(src), 'sanity check: the words are visible'
+    out = tmp_path / 'out.pdf'
+    result, err = run(src, ['Alice Smith', '123-45-6789'], out)
+    assert err is None and result['matches'] == 2 and result['ocr_pages'] == 1
+    text = ocr_pdf(out)
+    assert 'Alice' not in text and '6789' not in text
+    assert 'balance due' in text
+
+
+@needs_tesseract
+def test_real_ocr_finds_pii_in_text_with_no_character_map(tmp_path):
+    """PII detection reads the text layer too, so unreadable pages need OCR for it as well."""
+    from lib import pii
+    src = unreadable_text_pdf(tmp_path / 'bad.pdf', ['Customer SSN 123-45-6789', 'Balance due 42.00'])
+    out = tmp_path / 'out.pdf'
+    result, err = _redact_pdf(src, [], out, threading.Event(), pii_kinds=(pii.SSN,))
+    assert err is None and result['ocr_pages'] == 1 and result['matches'] >= 1
+    text = ocr_pdf(out)
+    assert '6789' not in text and 'Balance due' in text

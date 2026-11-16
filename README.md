@@ -12,7 +12,7 @@
 
 - Recursively scans the input directory for `.pdf`, `.jpg`/`.jpeg`, `.png`, `.tif`/`.tiff` and `.bmp` files
 - **PDFs:** matched page text is removed from the file, not just covered, and a black box is drawn in its place (PyMuPDF)
-- **Scanned PDFs:** pages without a text layer are read with Tesseract OCR, and the image pixels under each match are blacked out
+- **Scanned PDFs:** pages without a text layer are read with Tesseract OCR, and the image pixels under each match are blacked out. So are pages whose text can't be read back (fonts embedded without a character map, where you can't select the text in Preview) and text turned into outlines
 - **Images:** text is read with Tesseract OCR and matches are covered with black boxes
 - **Hidden PDF content:** every redacted PDF copy has its document properties (title, author and so on, including XMP metadata) and bookmarks removed, and is rewritten so removed content can't be recovered from the file. A term or detected value found only in those places still produces a cleaned copy
 - Case-insensitive matching; a term also matches inside longer words (`secret` matches `secret123`). Multi-word terms like `Alice Smith` work in PDFs, scans and images

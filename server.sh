@@ -49,17 +49,32 @@ start() {
   if ! command -v tesseract >/dev/null 2>&1 && [[ ! -x /opt/homebrew/bin/tesseract && ! -x /usr/local/bin/tesseract ]]; then
     echo "Warning: Tesseract not found; scanned PDFs and images can't be redacted (brew install tesseract)." >&2
   fi
+  if port_in_use "$port"; then
+    echo "Port $port is already in use by another program. Change PORT in app.conf, or stop that program." >&2
+    return 1
+  fi
   code_checksum > "$CODE_FILE"
   nohup python3 "$APP_DIR/app.py" >> "$LOG_FILE" 2>&1 &
-  echo $! > "$PID_FILE"
-  # Wait briefly for port to bind
-  for i in {1..30}; do
+  pid=$!
+  echo "$pid" > "$PID_FILE"
+  echo "$port" > "$PORT_FILE"
+  # Open the browser only once the server accepts connections: it takes a few
+  # seconds to load its libraries, and opening earlier shows "can't be reached"
+  local waited=0
+  until port_in_use "$port"; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$PID_FILE" "$PORT_FILE" "$CODE_FILE"
+      echo "$APP_TITLE failed to start. See $LOG_FILE for details." >&2
+      return 1
+    fi
+    if (( waited >= 100 )); then  # 20 seconds
+      echo "$APP_TITLE is taking a while to start (PID $pid). Open http://localhost:$port in a moment."
+      return 0
+    fi
     sleep 0.2
-    if [[ -f "$PORT_FILE" ]]; then break; fi
-    if python3 -c 'import socket,sys;sys.exit(socket.socket().connect_ex(("127.0.0.1",'$port'))==0)' 2>/dev/null; then echo "$port" > "$PORT_FILE"; break; fi
+    waited=$((waited + 1))
   done
-  if [[ ! -f "$PORT_FILE" ]]; then echo "$port" > "$PORT_FILE"; fi
-  echo "$APP_TITLE started at http://localhost:$port (PID $(cat "$PID_FILE"))"
+  echo "$APP_TITLE started at http://localhost:$port (PID $pid)"
   open_browser "http://localhost:$port"
 }
 

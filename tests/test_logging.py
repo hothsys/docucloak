@@ -105,7 +105,7 @@ def test_terms_never_appear_in_log_during_full_run(server, tmp_path, log, monkey
     server.post_json('/log', {'event': 'bogus', 'value': 'Alice Smith'})
     _, state = server.redact_and_wait(payload(tmp_path, terms='Alice Smith', terms_file_path=str(terms_file)))
     assert sum(r['result']['matches'] for r in state['results']) == 4  # 3 in the PDF, 1 in the image
-    assert any('scan.png: term #3 matched OCR text at (5, 5, 80, 20)' == r.getMessage() for r in log.records)
+    assert any('scan.png: term #3 matched OCR text at (3, 3, 84, 24)' == r.getMessage() for r in log.records)
     assert_no_secrets(log)
 
 
