@@ -51,7 +51,7 @@ def _ensure_dependencies():
     if missing:
         logger.info("Installing missing dependencies: %s", ", ".join(missing))
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
+            [sys.executable, "-m", "pip", "install", "--quiet", *missing],
         )
         logger.info("Dependencies installed.")
     else:

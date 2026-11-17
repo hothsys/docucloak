@@ -221,9 +221,7 @@ def _issuer_ok(digits):
         return True
     if len(digits) >= 4 and 3528 <= int(digits[:4]) <= 3589:  # JCB
         return True
-    if digits[:2] in ("36", "38") or 300 <= int(digits[:3]) <= 305:  # Diners
-        return True
-    return False
+    return digits[:2] in ("36", "38") or 300 <= int(digits[:3]) <= 305  # Diners
 
 
 def _is_grouped(raw):

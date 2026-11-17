@@ -86,7 +86,7 @@ def test_status_logs_only_changes_with_version(monkeypatch, tmp_path, caplog):
 
 
 def test_tools_endpoint(server, monkeypatch):
-    status, headers, body = server.get("/tools")
+    status, _headers, body = server.get("/tools")
     assert (status, body) == (200, b'{"tesseract": true}')
     monkeypatch.setattr(tesseract, "_find_tesseract", lambda: None)
     assert server.get("/tools")[2] == b'{"tesseract": false}'

@@ -42,7 +42,7 @@ def _fit_box_to_ink(gray, box, text):
     toward a little extra black is the safe direction for redaction.
     Returns (x, y, w, h) in image pixels.
     """
-    x, y, w, h = (int(round(v)) for v in box)
+    x, y, w, h = (round(v) for v in box)
     if h > w and len("".join(text.split())) > 1:
         # Vertical text (for example a page rotated 90°): measure along the
         # word's own direction by working on the image flipped on its diagonal
@@ -67,7 +67,7 @@ def _fit_box_to_ink(gray, box, text):
         limit = min(160, background - 60)
         dark = [any(pixels[r * width + c] < limit for r in range(rows)) for c in range(width)]
         runs, start = [], None
-        for c, is_dark in enumerate(dark + [False]):
+        for c, is_dark in enumerate([*dark, False]):
             if is_dark and start is None:
                 start = c
             elif not is_dark and start is not None:
@@ -311,7 +311,7 @@ def _analyze_pages(doc, page_numbers, terms: list[str], cancel_event, label: str
                     label,
                     pno + 1,
                 )
-                raise RedactionError(MSG_NEEDS_TESSERACT)
+                raise RedactionError(MSG_NEEDS_TESSERACT) from None
             ocr_pages += 1
             logger.debug(
                 "%s page %d has %s; running OCR",

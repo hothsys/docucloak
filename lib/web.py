@@ -45,7 +45,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/list_dir":
             query = parse_qs(parsed.query)
-            arg = lambda key: (query.get(key) or [""])[0]
+
+            def arg(key):
+                return (query.get(key) or [""])[0]
+
             self._json_response(
                 *_list_dir(arg("path"), arg("start"), arg("mode") == "file", arg("field"))
             )

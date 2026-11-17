@@ -98,7 +98,7 @@ SECRETS = ["Alice Smith", "John Doe", "123-45-6789"]
 
 def assert_no_secrets(caplog):
     logged = "\n".join(r.getMessage() for r in caplog.records)
-    for secret in SECRETS + ["Alice", "John", "6789"]:
+    for secret in [*SECRETS, "Alice", "John", "6789"]:
         assert secret not in logged, f"redaction term {secret!r} leaked into the log"
 
 

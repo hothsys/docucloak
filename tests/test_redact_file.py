@@ -87,5 +87,5 @@ def test_unsupported_extension_returns_info_dict(tmp_path):
 def test_corrupt_pdf_raises(tmp_path):
     bad = tmp_path / "bad.pdf"
     bad.write_bytes(b"not a pdf")
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         redaction._redact_file(bad, tmp_path / "out.pdf", ["x"], threading.Event())

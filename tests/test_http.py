@@ -102,7 +102,7 @@ def test_redact_rejects_missing_terms(server, tmp_path, sample_pdf):
 
 
 def test_redact_rejects_whitespace_only_terms(server, tmp_path, sample_pdf):
-    status, body = server.post_json(
+    status, _body = server.post_json(
         "/redact", redact_payload(tmp_path, terms=" , \n", terms_file_content="\n\n")
     )
     assert status == 400
@@ -178,7 +178,7 @@ def test_redact_end_to_end(server, tmp_path, sample_pdf):
 
 
 def test_files_without_matches_are_skipped_and_left_untouched(server, tmp_path):
-    hit = make_pdf(tmp_path / "in" / "hit.pdf", [["Alice Smith"]])
+    make_pdf(tmp_path / "in" / "hit.pdf", [["Alice Smith"]])
     miss = make_pdf(tmp_path / "in" / "miss.pdf", [["nothing sensitive here"]])
     before = (miss.read_bytes(), miss.stat().st_mtime_ns)
     _, state = server.redact_and_wait(redact_payload(tmp_path, terms="Alice Smith"))

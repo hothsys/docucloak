@@ -1,5 +1,6 @@
 """Shared fixtures for the DocuCloak test suite."""
 
+import contextlib
 import json
 import logging
 import os
@@ -114,10 +115,8 @@ def isolated_app(tmp_path, monkeypatch):
 
 def _cancel_and_drain():
     jobs._cancel_job()
-    try:
+    with contextlib.suppress(AssertionError):
         wait_for_job(timeout=10)
-    except AssertionError:
-        pass
 
 
 @pytest.fixture

@@ -119,7 +119,7 @@ def lines_ocr(*lines):
     }
     for line_no, words in enumerate(lines, 1):
         for text, x in words:
-            for k, v in zip(data, (text, x, line_no * 30, 40, 20, 1, 1, line_no)):
+            for k, v in zip(data, (text, x, line_no * 30, 40, 20, 1, 1, line_no), strict=False):
                 data[k].append(v)
     return data
 

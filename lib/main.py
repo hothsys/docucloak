@@ -1,5 +1,6 @@
 """Start the loopback-only DocuCloak web server."""
 
+import contextlib
 import os
 from http.server import ThreadingHTTPServer
 
@@ -12,10 +13,8 @@ def main():
     # Allow overriding port via app.conf
     cfg_port = config._APP_CONFIG.get("PORT")
     if cfg_port:
-        try:
+        with contextlib.suppress(ValueError):
             port = int(cfg_port)
-        except ValueError:
-            pass
     # Loopback only: the app reads and writes local files, so other devices on
     # the network must not be able to reach it
     server = ThreadingHTTPServer(("127.0.0.1", port), web.Handler)

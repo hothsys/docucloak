@@ -3,6 +3,7 @@
 import builtins
 import subprocess
 import sys
+from typing import ClassVar
 
 import pytest
 
@@ -107,7 +108,7 @@ def test_ensure_dependencies_propagates_pip_failure(monkeypatch):
 
 
 class FakeServer:
-    instances = []
+    instances: ClassVar[list] = []
 
     def __init__(self, addr, handler):
         self.addr, self.handler, self.shut = addr, handler, False

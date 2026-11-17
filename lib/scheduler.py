@@ -629,7 +629,7 @@ def _run_job(job_id, cancel, files, output_for, terms, pii_kinds=()):
             if crashed:
                 # A worker process died (e.g. a malformed file crashed the PDF
                 # library); every task it was sharing the pool with fails too
-                for fut, task in list(inflight.items()):
+                for task in list(inflight.values()):
                     crashed.append(task)
                 inflight.clear()
                 logger.warning(

@@ -21,7 +21,7 @@ def glyph_runs(img, y0=0, y1=None):
     y1 = img.height if y1 is None else y1
     dark = [any(img.getpixel((x, y)) < 160 for y in range(y0, y1)) for x in range(img.width)]
     runs, start = [], None
-    for x, d in enumerate(dark + [False]):
+    for x, d in enumerate([*dark, False]):
         if d and start is None:
             start = x
         elif not d and start is not None:
