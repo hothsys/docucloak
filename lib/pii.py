@@ -14,19 +14,19 @@ import re
 from dataclasses import dataclass
 
 # Stable ids: sent by the page, logged, and passed to worker processes.
-EMAIL = 'email'
-CREDIT_CARD = 'credit_card'
-SSN = 'ssn'
-PHONE = 'phone'
+EMAIL = "email"
+CREDIT_CARD = "credit_card"
+SSN = "ssn"
+PHONE = "phone"
 
 PII_TYPES = (EMAIL, CREDIT_CARD, SSN, PHONE)
 DEFAULT_TYPES = (EMAIL, CREDIT_CARD, SSN)  # phone is noisier, so it is opt-in
 
 LABELS = {
-    EMAIL: 'email address',
-    CREDIT_CARD: 'credit card number',
-    SSN: 'Social Security number',
-    PHONE: 'phone number',
+    EMAIL: "email address",
+    CREDIT_CARD: "credit card number",
+    SSN: "Social Security number",
+    PHONE: "phone number",
 }
 
 # When spans overlap (for example, a phone-shaped email local part), keep the
@@ -34,50 +34,50 @@ LABELS = {
 _PRIORITY = {EMAIL: 4, CREDIT_CARD: 3, SSN: 2, PHONE: 1}
 
 _EMAIL_RE = re.compile(
-    r'(?<![A-Za-z0-9._%+-])'
-    r'[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
-    r'(?![A-Za-z0-9-])'
+    r"(?<![A-Za-z0-9._%+-])"
+    r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+    r"(?![A-Za-z0-9-])"
 )
 
 # 13-19 digits with at most one space or hyphen between them. Boundaries keep
 # it from finding a card-shaped fragment inside a longer number or identifier.
-_CARD_RE = re.compile(r'(?<![0-9A-Za-z])(?:[0-9][ -]?){12,18}[0-9](?![0-9A-Za-z])')
+_CARD_RE = re.compile(r"(?<![0-9A-Za-z])(?:[0-9][ -]?){12,18}[0-9](?![0-9A-Za-z])")
 
 # The 3-2-4 shape is distinctive; bare 9-digit runs need a nearby label
 # because ZIP+4s, EINs and invoice numbers share the shape.
-_SSN_SEP_RE = re.compile(r'(?<![0-9A-Za-z])(\d{3})[- ](\d{2})[- ](\d{4})(?![0-9A-Za-z])')
-_SSN_BARE_RE = re.compile(r'(?<![0-9A-Za-z])(\d{9})(?![0-9A-Za-z])')
+_SSN_SEP_RE = re.compile(r"(?<![0-9A-Za-z])(\d{3})[- ](\d{2})[- ](\d{4})(?![0-9A-Za-z])")
+_SSN_BARE_RE = re.compile(r"(?<![0-9A-Za-z])(\d{9})(?![0-9A-Za-z])")
 _SSN_CONTEXT_RE = re.compile(
-    r'(?<![A-Za-z])(?:ssn|s\.\s?s\.\s?n\.?|social\s+security(?:\s+number)?|'
-    r'taxpayer\s+(?:id|identification)(?:\s+number)?)(?![A-Za-z])',
+    r"(?<![A-Za-z])(?:ssn|s\.\s?s\.\s?n\.?|social\s+security(?:\s+number)?|"
+    r"taxpayer\s+(?:id|identification)(?:\s+number)?)(?![A-Za-z])",
     re.IGNORECASE,
 )
 
 # NANP: 10 digits, optional leading 1/+1, separators optional, optional
 # extension. Area and exchange first digits are checked after matching.
 _PHONE_RE = re.compile(
-    r'(?<![0-9A-Za-z])'
-    r'(?:\+?1[ .-]?)?'
-    r'(?:\(\d{3}\)|\d{3})[ .-]?'
-    r'\d{3}[ .-]?\d{4}'
-    r'(?:\s*(?:x|ext\.?|extension)\s*\d{1,6})?'
-    r'(?![0-9A-Za-z])',
+    r"(?<![0-9A-Za-z])"
+    r"(?:\+?1[ .-]?)?"
+    r"(?:\(\d{3}\)|\d{3})[ .-]?"
+    r"\d{3}[ .-]?\d{4}"
+    r"(?:\s*(?:x|ext\.?|extension)\s*\d{1,6})?"
+    r"(?![0-9A-Za-z])",
     re.IGNORECASE,
 )
-_PHONE_EXT_RE = re.compile(r'\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$', re.IGNORECASE)
+_PHONE_EXT_RE = re.compile(r"\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$", re.IGNORECASE)
 
 _CARD_LABEL_RE = re.compile(
-    r'(?<![A-Za-z])(?:card|credit|debit|visa|mastercard|amex|american\s+express|'
-    r'discover|jcb|diners)(?![A-Za-z])',
+    r"(?<![A-Za-z])(?:card|credit|debit|visa|mastercard|amex|american\s+express|"
+    r"discover|jcb|diners)(?![A-Za-z])",
     re.IGNORECASE,
 )
 
 # A number introduced directly as an account, invoice, reference or similar
 # identifier is not a payment card, even if it happens to pass the card checks.
 _ACCOUNT_PREFIX_RE = re.compile(
-    r'(?<![A-Za-z])(?:account|acct\.?|invoice|reference|order|policy|member|'
-    r'customer|subscriber|subscription|claim)'
-    r'(?:[\s_-]*(?:number|no\.?|id|#))?[\s_-]*(?:is|are|of)?[\s_-]*[:#-]?[\s_-]*$',
+    r"(?<![A-Za-z])(?:account|acct\.?|invoice|reference|order|policy|member|"
+    r"customer|subscriber|subscription|claim)"
+    r"(?:[\s_-]*(?:number|no\.?|id|#))?[\s_-]*(?:is|are|of)?[\s_-]*[:#-]?[\s_-]*$",
     re.IGNORECASE,
 )
 
@@ -85,6 +85,7 @@ _ACCOUNT_PREFIX_RE = re.compile(
 @dataclass(frozen=True)
 class Match:
     """One detected span in the source text; ``text[start:end]`` is sensitive."""
+
     start: int
     end: int
     kind: str
@@ -135,7 +136,7 @@ def _cards(text):
         if _continues_number(text, match.start(), match.end()):
             continue
         raw = match.group(0)
-        digits = re.sub(r'\D', '', raw)
+        digits = re.sub(r"\D", "", raw)
         if not 13 <= len(digits) <= 19:
             continue
         issuer, luhn = _issuer_ok(digits), _luhn(digits)
@@ -146,9 +147,7 @@ def _cards(text):
         # only for a grouped, known-issuer number that the text calls a card: a
         # single mistyped digit must still be redacted. Without that label, a
         # grouped number from a known issuer is too often an account number.
-        if issuer and (luhn or (card_label and _is_grouped(raw))):
-            found.append(Match(match.start(), match.end(), CREDIT_CARD))
-        elif luhn and card_label:
+        if (issuer and (luhn or (card_label and _is_grouped(raw)))) or (luhn and card_label):
             found.append(Match(match.start(), match.end(), CREDIT_CARD))
     return found
 
@@ -174,15 +173,15 @@ def _phones(text):
     for match in _PHONE_RE.finditer(text):
         if _continues_number(text, match.start(), match.end()):
             continue
-        digits = re.sub(r'\D', '', _PHONE_EXT_RE.sub('', match.group(0)))
-        if len(digits) == 11 and digits.startswith('1'):
+        digits = re.sub(r"\D", "", _PHONE_EXT_RE.sub("", match.group(0)))
+        if len(digits) == 11 and digits.startswith("1"):
             digits = digits[1:]
         if len(digits) != 10:
             continue
         # NANP area codes start with 2-9. The exchange rule is relaxed: common
         # example numbers such as 555-123-4567 would otherwise be missed, and a
         # false negative is worse than a false positive for an opt-in detector.
-        if digits[0] not in '23456789':
+        if digits[0] not in "23456789":
             continue
         found.append(Match(match.start(), match.end(), PHONE))
     return found
@@ -190,8 +189,10 @@ def _phones(text):
 
 def _continues_number(text, start, end):
     """Reject a match that is only part of a longer separated number."""
-    return bool(re.search(r'\d[ -]$', text[max(0, start - 2):start])
-                or re.match(r'[ -]\d', text[end:end + 2]))
+    return bool(
+        re.search(r"\d[ -]$", text[max(0, start - 2) : start])
+        or re.match(r"[ -]\d", text[end : end + 2])
+    )
 
 
 def _luhn(digits):
@@ -208,40 +209,46 @@ def _luhn(digits):
 
 def _issuer_ok(digits):
     """Whether the number starts like a card from a major issuer."""
-    if digits[0] == '4':  # Visa
+    if digits[0] == "4":  # Visa
         return True
     if 51 <= int(digits[:2]) <= 55:  # Mastercard
         return True
     if len(digits) >= 4 and 2221 <= int(digits[:4]) <= 2720:  # Mastercard
         return True
-    if digits[:2] in ('34', '37'):  # Amex
+    if digits[:2] in ("34", "37"):  # Amex
         return True
-    if digits[:4] == '6011' or digits[:2] == '65':  # Discover
+    if digits[:4] == "6011" or digits[:2] == "65":  # Discover
         return True
     if len(digits) >= 4 and 3528 <= int(digits[:4]) <= 3589:  # JCB
         return True
-    if digits[:2] in ('36', '38') or 300 <= int(digits[:3]) <= 305:  # Diners
+    if digits[:2] in ("36", "38") or 300 <= int(digits[:3]) <= 305:  # Diners
         return True
     return False
 
 
 def _is_grouped(raw):
     """A card-like grouping such as 4-4-4-4, 4-6-5 or 4-4-4-4-3."""
-    groups = re.split(r'[ -]', raw)
+    groups = re.split(r"[ -]", raw)
     return len(groups) >= 3 and all(3 <= len(group) <= 6 for group in groups)
 
 
 def _valid_ssn(area, group, serial):
-    return (area not in ('000', '666') and not area.startswith('9')
-            and group != '00' and serial != '0000')
+    return (
+        area not in ("000", "666")
+        and not area.startswith("9")
+        and group != "00"
+        and serial != "0000"
+    )
 
 
 def _has_label(text, start, end, pattern, before=48, after=24):
     """Whether a validating label appears just before or after the span."""
-    return bool(pattern.search(text[max(0, start - before):start])
-                or pattern.search(text[end:end + after]))
+    return bool(
+        pattern.search(text[max(0, start - before) : start])
+        or pattern.search(text[end : end + after])
+    )
 
 
 def _has_account_prefix(text, start, before=48):
     """Whether an account-like label directly introduces the span."""
-    return bool(_ACCOUNT_PREFIX_RE.search(text[max(0, start - before):start]))
+    return bool(_ACCOUNT_PREFIX_RE.search(text[max(0, start - before) : start]))
