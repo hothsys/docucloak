@@ -2,62 +2,70 @@
 
 let pollTimer = null;
 
-let lastOutputDir = '';
+let lastOutputDir = "";
 
 async function startRedact() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
   // No separate /cancel call: the server cancels any running job when a new one starts.
   await pendingLog;
   saveFields();
-  const inputDir = document.getElementById('inputDir').value.trim();
-  const outputDir = document.getElementById('outputDir').value.trim();
-  const terms = document.getElementById('terms').value;
+  const inputDir = document.getElementById("inputDir").value.trim();
+  const outputDir = document.getElementById("outputDir").value.trim();
+  const terms = document.getElementById("terms").value;
   // Only the path is sent; the server reads the file's current contents itself.
-  const termsFilePath = document.getElementById('termsFile').value.trim();
-  setStatus('Starting…');
+  const termsFilePath = document.getElementById("termsFile").value.trim();
+  setStatus("Starting…");
   showProgress(null);
-  document.getElementById('showOutput').hidden = true;
+  document.getElementById("showOutput").hidden = true;
   lastOutputDir = outputDir;
-  document.getElementById('results').innerHTML = '';
+  document.getElementById("results").innerHTML = "";
 
   try {
-    const res = await fetch('/redact', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({input_dir: inputDir, output_dir: outputDir, terms: terms,
-                            terms_file_path: termsFilePath, pii_kinds: piiKinds()})
+    const res = await fetch("/redact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input_dir: inputDir,
+        output_dir: outputDir,
+        terms: terms,
+        terms_file_path: termsFilePath,
+        pii_kinds: piiKinds(),
+      }),
     });
     const data = await readJson(res);
     if (data.error) {
-      setStatus(data.error, 'error');
+      setStatus(data.error, "error");
       return;
     }
-    setStatus(`Looking through ${plural(data.files, 'file')}…`);
+    setStatus(`Looking through ${plural(data.files, "file")}…`);
     pollStatus();
   } catch (e) {
-    setStatus(e.message === OUTDATED ? OUTDATED : NOT_RESPONDING, 'error');
+    setStatus(e.message === OUTDATED ? OUTDATED : NOT_RESPONDING, "error");
   }
 }
 
 async function cancelRedact() {
   try {
-    await fetch('/cancel', {method: 'POST'});
+    await fetch("/cancel", { method: "POST" });
   } catch (e) {
-    setStatus(NOT_RESPONDING, 'error');
+    setStatus(NOT_RESPONDING, "error");
     return;
   }
-  if (pollTimer) setStatus('Cancelling…');
+  if (pollTimer) setStatus("Cancelling…");
 }
 
 // "30 PDFs, 7 scanned PDFs, 10 images and 1 password-protected PDF"
 function describeFound(survey) {
   const c = survey.counts;
   const groups = [
-    [c['text PDF'] || 0, 'PDF'],
-    [(c['scanned PDF'] || 0) + (c['mixed PDF'] || 0), 'scanned PDF'],
-    [c['image'] || 0, 'image'],
-    [c['protected PDF'] || 0, 'password-protected PDF'],
-    [c['unreadable PDF'] || 0, 'unreadable file'],
+    [c["text PDF"] || 0, "PDF"],
+    [(c["scanned PDF"] || 0) + (c["mixed PDF"] || 0), "scanned PDF"],
+    [c["image"] || 0, "image"],
+    [c["protected PDF"] || 0, "password-protected PDF"],
+    [c["unreadable PDF"] || 0, "unreadable file"],
   ];
   return listJoin(groups.filter(([n]) => n).map(([n, word]) => plural(n, word)));
 }
@@ -67,7 +75,7 @@ function describeFound(survey) {
 // the remaining work, calibrated on finished tasks). Between status updates the
 // page counts both along, and it smooths the estimate so it doesn't jitter.
 
-const timing = {data: null, receivedAt: 0, remaining: null, ticker: null};
+const timing = { data: null, receivedAt: 0, remaining: null, ticker: null };
 
 function receiveTiming(data) {
   const now = performance.now() / 1000;
@@ -85,10 +93,13 @@ function receiveTiming(data) {
 
 // Elapsed and remaining seconds right now (counted along since the last update)
 function currentTiming(data) {
-  if (data !== timing.data) return {elapsed: data.elapsed, remaining: data.remaining};
+  if (data !== timing.data) return { elapsed: data.elapsed, remaining: data.remaining };
   const since = performance.now() / 1000 - timing.receivedAt;
   return {
-    elapsed: data.elapsed === null || data.elapsed === undefined ? null : data.elapsed + (data.running ? since : 0),
+    elapsed:
+      data.elapsed === null || data.elapsed === undefined
+        ? null
+        : data.elapsed + (data.running ? since : 0),
     remaining: timing.remaining === null ? null : Math.max(0, timing.remaining - since),
   };
 }
@@ -97,14 +108,17 @@ function currentTiming(data) {
 function formatDuration(seconds) {
   const s = Math.floor(seconds);
   if (s < 60) return `${s} sec`;
-  if (s < 3600) return `${Math.floor(s / 60)} min` + (s % 60 ? ` ${s % 60} sec` : '');
-  return `${Math.floor(s / 3600)} hr` + (Math.floor(s / 60) % 60 ? ` ${Math.floor(s / 60) % 60} min` : '');
+  if (s < 3600) return `${Math.floor(s / 60)} min` + (s % 60 ? ` ${s % 60} sec` : "");
+  return (
+    `${Math.floor(s / 3600)} hr` +
+    (Math.floor(s / 60) % 60 ? ` ${Math.floor(s / 60) % 60} min` : "")
+  );
 }
 
 // Rounded so the estimate doesn't pretend to be more precise than it is
 function describeRemaining(seconds) {
-  if (seconds === null || seconds === undefined) return 'Estimating time left…';
-  if (seconds < 5) return 'Almost done';
+  if (seconds === null || seconds === undefined) return "Estimating time left…";
+  if (seconds < 5) return "Almost done";
   if (seconds < 60) return `About ${Math.max(5, Math.round(seconds / 5) * 5)} sec left`;
   if (seconds < 600) return `About ${formatDuration(Math.round(seconds / 10) * 10)} left`;
   return `About ${formatDuration(Math.round(seconds / 60) * 60)} left`;
@@ -112,90 +126,103 @@ function describeRemaining(seconds) {
 
 // The scheduler can work on several files at once; name up to three of them
 function describeCurrent(files) {
-  if (!files || !files.length) return '';
+  if (!files || !files.length) return "";
   const shown = files.slice(0, 3);
   const extra = files.length - shown.length;
-  return `Now: ${shown.join(', ')}` + (extra ? ` and ${plural(extra, 'more file')}` : '');
+  return `Now: ${shown.join(", ")}` + (extra ? ` and ${plural(extra, "more file")}` : "");
 }
 
 const PII_LABELS = {
-  email: 'email address',
-  credit_card: 'credit card number',
-  ssn: 'Social Security number',
-  phone: 'phone number',
+  email: "email address",
+  credit_card: "credit card number",
+  ssn: "Social Security number",
+  phone: "phone number",
 };
-const PII_PLURALS = {email: 'email addresses'};
+const PII_PLURALS = { email: "email addresses" };
 
 // {email: 2, ssn: 1} -> "2 email addresses and 1 Social Security number"
 function describePii(pii) {
-  if (!pii) return '';
-  return listJoin(Object.entries(pii)
-    .filter(([, n]) => n)
-    .map(([kind, n]) => n === 1 ? `1 ${PII_LABELS[kind] || kind}` :
-      `${n} ${PII_PLURALS[kind] || (PII_LABELS[kind] || kind) + 's'}`));
+  if (!pii) return "";
+  return listJoin(
+    Object.entries(pii)
+      .filter(([, n]) => n)
+      .map(([kind, n]) =>
+        n === 1
+          ? `1 ${PII_LABELS[kind] || kind}`
+          : `${n} ${PII_PLURALS[kind] || (PII_LABELS[kind] || kind) + "s"}`,
+      ),
+  );
 }
 
 function finishedMessage(data) {
   const results = data.results || [];
-  const redacted = results.filter(r => r.path).length;
-  const skipped = results.filter(r => !r.error && r.result && r.result.skipped).length;
-  const needOcr = results.filter(r => r.needs_tesseract);
-  const otherFailed = results.filter(r => r.error && !r.needs_tesseract).length;
+  const redacted = results.filter((r) => r.path).length;
+  const skipped = results.filter((r) => !r.error && r.result && r.result.skipped).length;
+  const needOcr = results.filter((r) => r.needs_tesseract);
+  const otherFailed = results.filter((r) => r.error && !r.needs_tesseract).length;
   const piiTotals = {};
-  results.forEach(r => {
+  results.forEach((r) => {
     Object.entries((r.result && r.result.pii) || {}).forEach(([kind, n]) => {
       piiTotals[kind] = (piiTotals[kind] || 0) + n;
     });
   });
   const piiText = describePii(piiTotals);
   // "Done in 12 sec." when the server reported how long the run took
-  const took = data.elapsed === null || data.elapsed === undefined ? '' :
-    (data.elapsed < 1 ? ' in under 1 sec' : ` in ${formatDuration(data.elapsed)}`);
+  const took =
+    data.elapsed === null || data.elapsed === undefined
+      ? ""
+      : data.elapsed < 1
+        ? " in under 1 sec"
+        : ` in ${formatDuration(data.elapsed)}`;
   if (data.cancelled) {
-    return `Cancelled${took ? ' after' + took.slice(3) : ''}. ${plural(redacted, 'file')} ${redacted === 1 ? 'was' : 'were'} redacted before stopping.`;
+    return `Cancelled${took ? " after" + took.slice(3) : ""}. ${plural(redacted, "file")} ${redacted === 1 ? "was" : "were"} redacted before stopping.`;
   }
-  if (data.total === 0) return 'No PDFs or images were found in the input directory.';
+  if (data.total === 0) return "No PDFs or images were found in the input directory.";
   if (redacted === 0 && needOcr.length === 0 && otherFailed === 0) {
     return `Done${took}. None of the files contain anything to redact, so no copies were made.`;
   }
-  const parts = [`${plural(redacted, 'file')} redacted`];
+  const parts = [`${plural(redacted, "file")} redacted`];
   if (skipped) parts.push(`${skipped} had no matches`);
   if (otherFailed) parts.push(`${otherFailed} couldn't be redacted (see below)`);
   const lines = [`Done${took}. ${listJoin(parts)}.`];
   if (piiText) lines.push(`Automatically found ${piiText}.`);
   if (needOcr.length) {
     // Spell out the cause: these files need Tesseract
-    const pdfs = needOcr.filter(r => /\.pdf$/i.test(r.input)).length;
+    const pdfs = needOcr.filter((r) => /\.pdf$/i.test(r.input)).length;
     const images = needOcr.length - pdfs;
-    const what = listJoin([pdfs && plural(pdfs, 'scanned PDF'), images && plural(images, 'image')].filter(Boolean));
-    lines.push(`${what} couldn't be redacted because Tesseract isn't installed. ` +
-               'Install Tesseract to redact scanned PDFs and images (click the badge in the top-right corner for help).');
+    const what = listJoin(
+      [pdfs && plural(pdfs, "scanned PDF"), images && plural(images, "image")].filter(Boolean),
+    );
+    lines.push(
+      `${what} couldn't be redacted because Tesseract isn't installed. ` +
+        "Install Tesseract to redact scanned PDFs and images (click the badge in the top-right corner for help).",
+    );
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function renderStatus(data) {
   const t = currentTiming(data);
-  if (data.running && data.phase === 'surveying') {
-    setStatus(`Looking through ${plural(data.total, 'file')}…`);
+  if (data.running && data.phase === "surveying") {
+    setStatus(`Looking through ${plural(data.total, "file")}…`);
     showProgress(0);
   } else if (data.running) {
     const lines = [];
     if (data.survey) lines.push(`Found ${describeFound(data.survey)}.`);
-    lines.push(`Redacting… ${data.done} of ${plural(data.total, 'file')} done.`);
+    lines.push(`Redacting… ${data.done} of ${plural(data.total, "file")} done.`);
     const now = describeCurrent(data.current);
     if (now) lines.push(now);
     if (t.elapsed !== null && t.elapsed !== undefined) {
       lines.push(`Elapsed ${formatDuration(t.elapsed)} · ${describeRemaining(t.remaining)}`);
     }
     const c = data.survey ? data.survey.counts : {};
-    const needsTesseract = c['image'] || c['scanned PDF'] || c['mixed PDF'];
+    const needsTesseract = c["image"] || c["scanned PDF"] || c["mixed PDF"];
     if (needsTesseract && !tesseractAvailable) {
       lines.push("Tesseract isn't installed, so scanned PDFs and images can't be redacted.");
     } else if (data.survey && data.survey.scan_pages) {
-      lines.push('Scanned pages take a little longer to process.');
+      lines.push("Scanned pages take a little longer to process.");
     }
-    setStatus(lines.join('\n'));
+    setStatus(lines.join("\n"));
     // Time-based once there's an estimate (scanned pages take far longer than text
     // pages, so pages done would mislead); pages done until then
     if (t.remaining !== null && t.remaining !== undefined && t.elapsed) {
@@ -204,30 +231,35 @@ function renderStatus(data) {
       showProgress(data.pages_total ? data.pages_done / data.pages_total : 0);
     }
   } else {
-    setStatus(finishedMessage(data), 'done');
+    setStatus(finishedMessage(data), "done");
     // Shown after every run; disabled when nothing was saved (no matches, or files that couldn't be read)
-    const button = document.getElementById('showOutput');
-    const saved = (data.results || []).some(r => r.path);
+    const button = document.getElementById("showOutput");
+    const saved = (data.results || []).some((r) => r.path);
     button.hidden = false;
     button.disabled = !saved;
-    button.title = saved ? '' : 'Nothing was saved to the output folder';
+    button.title = saved ? "" : "Nothing was saved to the output folder";
     showProgress(data.cancelled || data.total === 0 ? null : 1);
   }
 }
 
 function renderResults(results) {
-  const baseName = p => p.split(/[\\/]/).pop();
-  document.getElementById('results').innerHTML = results.map(r => {
-    const skipped = !r.error && r.result && r.result.skipped;
-    const cls = r.error ? 'err' : (skipped ? 'skip' : 'ok');
-    const pii = describePii(r.result && r.result.pii);
-    const meta = r.error ? r.error : (skipped ? 'No matches, nothing to redact' :
-      'Saved as ' + baseName(r.path) + (pii ? ' · ' + pii : ''));
-    const name = r.input ? baseName(r.input) : 'unknown';
-    // Redacted files show their copy; skipped or failed files show the original
-    const target = r.path || r.input || '';
-    return `<div class="result-item ${cls}"><button type="button" class="reveal" data-reveal="${escapeHtml(target)}" title="Show in folder: ${escapeHtml(target)}">${escapeHtml(name)}</button><span class="meta">${escapeHtml(meta)}</span></div>`;
-  }).join('');
+  const baseName = (p) => p.split(/[\\/]/).pop();
+  document.getElementById("results").innerHTML = results
+    .map((r) => {
+      const skipped = !r.error && r.result && r.result.skipped;
+      const cls = r.error ? "err" : skipped ? "skip" : "ok";
+      const pii = describePii(r.result && r.result.pii);
+      const meta = r.error
+        ? r.error
+        : skipped
+          ? "No matches, nothing to redact"
+          : "Saved as " + baseName(r.path) + (pii ? " · " + pii : "");
+      const name = r.input ? baseName(r.input) : "unknown";
+      // Redacted files show their copy; skipped or failed files show the original
+      const target = r.path || r.input || "";
+      return `<div class="result-item ${cls}"><button type="button" class="reveal" data-reveal="${escapeHtml(target)}" title="Show in folder: ${escapeHtml(target)}">${escapeHtml(name)}</button><span class="meta">${escapeHtml(meta)}</span></div>`;
+    })
+    .join("");
 }
 
 function stopTicker() {
@@ -238,14 +270,14 @@ function stopTicker() {
 function pollStatus() {
   if (pollTimer) clearInterval(pollTimer);
   stopTicker();
-  Object.assign(timing, {data: null, remaining: null});
+  Object.assign(timing, { data: null, remaining: null });
   // Re-render every second between updates so elapsed and remaining count smoothly
   timing.ticker = setInterval(() => {
     if (timing.data && timing.data.running) renderStatus(timing.data);
   }, 1000);
   pollTimer = setInterval(async () => {
     try {
-      const res = await fetch('/status');
+      const res = await fetch("/status");
       const data = await res.json();
       receiveTiming(data);
       renderStatus(data);
