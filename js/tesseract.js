@@ -27,7 +27,7 @@ async function checkTesseract({ openHelp = true } = {}) {
       badge.onclick = openTesseractHelp;
       if (openHelp) openTesseractHelp();
     }
-  } catch (e) {
+  } catch {
     badge.className = "tool-badge";
     badge.textContent = "Couldn't check for Tesseract";
   }
