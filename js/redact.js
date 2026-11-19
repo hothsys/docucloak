@@ -50,7 +50,7 @@ async function startRedact() {
 async function cancelRedact() {
   try {
     await fetch("/cancel", { method: "POST" });
-  } catch (e) {
+  } catch {
     setStatus(NOT_RESPONDING, "error");
     return;
   }
@@ -63,7 +63,7 @@ function describeFound(survey) {
   const groups = [
     [c["text PDF"] || 0, "PDF"],
     [(c["scanned PDF"] || 0) + (c["mixed PDF"] || 0), "scanned PDF"],
-    [c["image"] || 0, "image"],
+    [c.image || 0, "image"],
     [c["protected PDF"] || 0, "password-protected PDF"],
     [c["unreadable PDF"] || 0, "unreadable file"],
   ];
@@ -108,7 +108,7 @@ function currentTiming(data) {
 function formatDuration(seconds) {
   const s = Math.floor(seconds);
   if (s < 60) return `${s} sec`;
-  if (s < 3600) return `${Math.floor(s / 60)} min` + (s % 60 ? ` ${s % 60} sec` : "");
+  if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} sec` : ""}`;
   return (
     `${Math.floor(s / 3600)} hr` +
     (Math.floor(s / 60) % 60 ? ` ${Math.floor(s / 60) % 60} min` : "")
@@ -126,10 +126,10 @@ function describeRemaining(seconds) {
 
 // The scheduler can work on several files at once; name up to three of them
 function describeCurrent(files) {
-  if (!files || !files.length) return "";
+  if (!files?.length) return "";
   const shown = files.slice(0, 3);
   const extra = files.length - shown.length;
-  return `Now: ${shown.join(", ")}` + (extra ? ` and ${plural(extra, "more file")}` : "");
+  return `Now: ${shown.join(", ")}${extra ? ` and ${plural(extra, "more file")}` : ""}`;
 }
 
 const PII_LABELS = {
@@ -149,7 +149,7 @@ function describePii(pii) {
       .map(([kind, n]) =>
         n === 1
           ? `1 ${PII_LABELS[kind] || kind}`
-          : `${n} ${PII_PLURALS[kind] || (PII_LABELS[kind] || kind) + "s"}`,
+          : `${n} ${PII_PLURALS[kind] || `${PII_LABELS[kind] || kind}s`}`,
       ),
   );
 }
@@ -162,7 +162,7 @@ function finishedMessage(data) {
   const otherFailed = results.filter((r) => r.error && !r.needs_tesseract).length;
   const piiTotals = {};
   results.forEach((r) => {
-    Object.entries((r.result && r.result.pii) || {}).forEach(([kind, n]) => {
+    Object.entries(r.result?.pii || {}).forEach(([kind, n]) => {
       piiTotals[kind] = (piiTotals[kind] || 0) + n;
     });
   });
@@ -175,7 +175,7 @@ function finishedMessage(data) {
         ? " in under 1 sec"
         : ` in ${formatDuration(data.elapsed)}`;
   if (data.cancelled) {
-    return `Cancelled${took ? " after" + took.slice(3) : ""}. ${plural(redacted, "file")} ${redacted === 1 ? "was" : "were"} redacted before stopping.`;
+    return `Cancelled${took ? ` after${took.slice(3)}` : ""}. ${plural(redacted, "file")} ${redacted === 1 ? "was" : "were"} redacted before stopping.`;
   }
   if (data.total === 0) return "No PDFs or images were found in the input directory.";
   if (redacted === 0 && needOcr.length === 0 && otherFailed === 0) {
@@ -216,10 +216,10 @@ function renderStatus(data) {
       lines.push(`Elapsed ${formatDuration(t.elapsed)} · ${describeRemaining(t.remaining)}`);
     }
     const c = data.survey ? data.survey.counts : {};
-    const needsTesseract = c["image"] || c["scanned PDF"] || c["mixed PDF"];
+    const needsTesseract = c.image || c["scanned PDF"] || c["mixed PDF"];
     if (needsTesseract && !tesseractAvailable) {
       lines.push("Tesseract isn't installed, so scanned PDFs and images can't be redacted.");
-    } else if (data.survey && data.survey.scan_pages) {
+    } else if (data.survey?.scan_pages) {
       lines.push("Scanned pages take a little longer to process.");
     }
     setStatus(lines.join("\n"));
@@ -248,12 +248,12 @@ function renderResults(results) {
     .map((r) => {
       const skipped = !r.error && r.result && r.result.skipped;
       const cls = r.error ? "err" : skipped ? "skip" : "ok";
-      const pii = describePii(r.result && r.result.pii);
+      const pii = describePii(r.result?.pii);
       const meta = r.error
         ? r.error
         : skipped
           ? "No matches, nothing to redact"
-          : "Saved as " + baseName(r.path) + (pii ? " · " + pii : "");
+          : `Saved as ${baseName(r.path)}${pii ? ` · ${pii}` : ""}`;
       const name = r.input ? baseName(r.input) : "unknown";
       // Redacted files show their copy; skipped or failed files show the original
       const target = r.path || r.input || "";
@@ -273,7 +273,7 @@ function pollStatus() {
   Object.assign(timing, { data: null, remaining: null });
   // Re-render every second between updates so elapsed and remaining count smoothly
   timing.ticker = setInterval(() => {
-    if (timing.data && timing.data.running) renderStatus(timing.data);
+    if (timing.data?.running) renderStatus(timing.data);
   }, 1000);
   pollTimer = setInterval(async () => {
     try {
@@ -281,12 +281,12 @@ function pollStatus() {
       const data = await res.json();
       receiveTiming(data);
       renderStatus(data);
-      if (data.results && data.results.length) renderResults(data.results);
+      if (data.results?.length) renderResults(data.results);
       if (!data.running) {
         clearInterval(pollTimer);
         stopTicker();
       }
-    } catch (e) {
+    } catch {
       // ignore poll errors
     }
   }, 500);

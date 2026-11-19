@@ -11,7 +11,7 @@ async function revealPath(path) {
     });
     const data = await res.json();
     if (data.error) setStatus(data.error, "error");
-  } catch (e) {
+  } catch {
     setStatus(NOT_RESPONDING, "error");
   }
 }
@@ -72,7 +72,7 @@ function saveFields() {
   localStorage.setItem("dc_outputDir", document.getElementById("outputDir").value);
   localStorage.setItem("dc_termsFile", document.getElementById("termsFile").value);
   PII_FIELD_IDS.forEach((id) => {
-    localStorage.setItem("dc_" + id, document.getElementById(id).checked ? "1" : "0");
+    localStorage.setItem(`dc_${id}`, document.getElementById(id).checked ? "1" : "0");
   });
 }
 
@@ -85,7 +85,7 @@ function restoreFields() {
   localStorage.removeItem("dc_terms"); // purge terms saved by older versions
   if (localStorage.getItem("dc_termsFile") !== null) f.value = localStorage.getItem("dc_termsFile");
   PII_FIELD_IDS.forEach((id) => {
-    const saved = localStorage.getItem("dc_" + id);
+    const saved = localStorage.getItem(`dc_${id}`);
     if (saved !== null) document.getElementById(id).checked = saved === "1";
   });
 }
@@ -109,7 +109,7 @@ const OUTDATED =
 async function readJson(res) {
   try {
     return await res.json();
-  } catch (e) {
+  } catch {
     throw new Error(OUTDATED);
   }
 }
@@ -135,7 +135,7 @@ function setStatus(text, state = "busy") {
 function showProgress(fraction) {
   const bar = document.getElementById("progressBar");
   bar.parentElement.hidden = fraction === null;
-  bar.style.width = (fraction === null ? 0 : 100 * fraction) + "%";
+  bar.style.width = `${fraction === null ? 0 : 100 * fraction}%`;
 }
 
 function plural(n, word) {
@@ -146,5 +146,5 @@ function plural(n, word) {
 function listJoin(items) {
   return items.length < 2
     ? items.join("")
-    : items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

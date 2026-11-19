@@ -48,7 +48,7 @@ async function loadFolder(path, start = "") {
   else params.set("start", start);
   const errorEl = document.getElementById("browserError");
   try {
-    const res = await fetch("/list_dir?" + params);
+    const res = await fetch(`/list_dir?${params}`);
     const data = await readJson(res);
     if (data.error) {
       errorEl.textContent = data.error;
