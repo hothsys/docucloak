@@ -4,7 +4,7 @@
 
 <h1 align="center">DocuCloak</h1>
 
-A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.
+<p align="center">A web app that runs on your Mac and redacts PDFs and images. Point it at an input directory, give it a list of terms or turn on automatic PII detection, and it writes blacked-out copies of every matching file to an output directory. Your originals are never modified.</p>
 
 ## Quick Start
 
